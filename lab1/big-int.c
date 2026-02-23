@@ -6,7 +6,7 @@
 #define SUCCESS 0
 #define MEMORY_ERROR 1
 #define INCORRECT_INPUT 2
-#define BASE 256
+#define BASE (sizeof(int) * 8)
 
 typedef struct Bigint {
         int high_digit;
@@ -194,35 +194,102 @@ Bigint* sum(Bigint* number1, Bigint* number2) {
                 return number1;
         } else {
                 // determine greater number out of two
-                Bigint* great_number = NULL;
-                Bigint* less_number = NULL;        
-                if (number1->digits[0] > number2->digits[0]) {
+                Bigint* great_number = NULL; 
+                Bigint* less_number = NULL; 
+                unsigned int abs_high1 = number1->high_digit & max_number_i; 
+                unsigned int abs_high2 = number2->high_digit & max_number_i; 
+                if (number1->digits[0] > number2->digits[0]) { 
                         great_number = number1; 
-                        less_number = number2;
-                } else if (number1->digits[0] < number2->digits[0]) {
-                        great_number = number2;
-                        less_number = number1;
-                } else if (number1->high_digit >= number2->high_digit) {
-                        great_number = number1;
-                        less_number = number2;
-                } else {
-                        great_number = number2;
-                        less_number = number1;
+                        less_number = number2; 
+                } else if (number1->digits[0] < number2->digits[0]) { 
+                        great_number = number2; 
+                        less_number = number1; 
+                } else if (abs_high1 > abs_high2) { 
+                        great_number = number1; 
+                        less_number = number2; 
+                } else if (abs_high1 < abs_high2) { 
+                        great_number = number2; 
+                        less_number = number1; 
+                } else { 
+                        int i = number1->digits[0]; 
+                        while ((number1->digits[i] == number2->digits[i]) && i > 0) i--; 
+                        if (number1->digits[i] > number2->digits[i]) { 
+                                great_number = number1; 
+                                less_number = number2; 
+                        } else if (number1->digits[i] <= number2->digits[i]) { 
+                                great_number = number2; 
+                                less_number = number1; 
+                        } 
+                } 
+                unsigned int abs_great = great_number->high_digit & max_number_i;
+                unsigned int abs_less = less_number->high_digit & max_number_i;
+                for (int i = 1; i <= min_length; i++) {
+                        if (great_number->digits[i] < less_number->digits[i] + carry) {
+                                summary = (1ULL << BASE) + (long long unsigned)great_number->digits[i] -
+                                (long long unsigned)less_number->digits[i] - carry;
+                                // printf("%llu + %u - %u - %u = %llu\n", 1ULL << BASE, great_number->digits[i], less_number->digits[i], carry, summary);
+                                carry = 1;
+                        } else {
+                                summary = (long long unsigned)great_number->digits[i] -
+                                 (long long unsigned)less_number->digits[i] - carry;
+                                // printf("%u - %u - %u = %llu\n", great_number->digits[i], less_number->digits[i], carry, summary);
+                                carry = 0;
+                        }
+                        great_number->digits[i] = (unsigned int)summary;
                 }
+
+                if (great_number->digits[0] > less_number->digits[0]) {
+                        int i = min_length + 1;
+                        if (great_number->digits[i] < abs_less + carry) {
+                                summary = (long long unsigned)(1ULL << BASE) + (long long unsigned)great_number->digits[i] -
+                                (long long unsigned)abs_less - carry;
+                                carry = 1;
+                        } else {
+                                printf("ffffff\n");
+                                summary = (long long unsigned)great_number->digits[i] -
+                                 (long long unsigned)abs_less - carry;
+                                carry = 0;
+                        }
+                        great_number->digits[i] = (unsigned int)summary;
+                        i++;
+
+                        while (carry && (i < great_number->digits[0])) {
+                                if (great_number->digits[i] < carry) {
+                                        summary = (long long unsigned)(1ULL << BASE) + 
+                                        (long long unsigned)great_number->digits[i] - carry;
+                                        carry = 1;
+                                } else {
+                                        summary = (long long unsigned)great_number->digits[i] - carry;
+                                        carry = 0;
+                                }
+                                great_number->digits[i] = (unsigned int)summary;
+                        }
+
+                        great_number->high_digit -= carry;
+                } else {
+                        int high_sign = great_number->high_digit & sign_mask;
+                        unsigned int result = abs_great - abs_less - carry;
+                        great_number->high_digit = result;
+                        if (high_sign) great_number->high_digit |= sign_mask;      
+                }
+
+                return great_number;
         }
 }
 
 int main(void) {
-        char* a = "-21294579897845434784556789046789522267299";
-        // char* a = "4267399";
+        // char* a = "-21294579897845434784556789046789522267299";
+        char* a = "-1423564989346289667299";
+        // char* a = "-42";
         Bigint* number1 = init();
         assign_value(number1, a);
         print_number(number1);
 
         printf("+\n");
 
-        char* b = "-1423564989346289667299";
-        // char* b = "4294946";
+        // char* b = "1423564989346289667299";
+        char* b = "21294579897845434784556789046789522267299";
+        // char* b = "4";
         Bigint* number2 = init();
         assign_value(number2, b);
         print_number(number2);
