@@ -123,115 +123,97 @@ void print_number(Bigint* number) {
         // printf("\b\n");
         // printBits(4294967295 >> (sizeof(int) * 8 - 1));
         printf("(%u)\n", number->digits[0]);
-}
-
-// unsigned int sum_bits(unsigned int value1, unsigned int value2) {
-//         unsigned int max_number = (1U - 2);
-//         unsigned int remainder = max_number - value1;
-//         // if remainder is greater than second number it means that sum is suitable for this position
-//         if (remainder > value2) {
-
-//         }
-// }       
+} 
 
 Bigint* sum(Bigint* number1, Bigint* number2) {
         unsigned int max_number_ui = (0U - 1);
         unsigned int max_number_i = ~(1 << (sizeof(int) * 8 - 1));
         unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1));
-
-        // determine greater number out of two
-        Bigint* great_number = NULL;
-        if (number1->digits[0] >= number2->digits[0]) {
-                great_number = number1; 
-        } else {
-                great_number = number2;
-        }
-
         unsigned int min_length = (number1->digits[0] < number2->digits[0]) ? number1->digits[0] : number2->digits[0];
-        unsigned int remainder = 0;
         unsigned int carry = 0;
+        long long unsigned summary = 0; 
 
         // in case of the same sign just sum up values
         if ((number1->high_digit & sign_mask) == (number2->high_digit & sign_mask)) {
                 for (int i = 1; i <= min_length; i++) {
-                        // proccess the carried value
-                        if (carry != 0) {
-                                remainder = max_number_ui - number1->digits[i];
-                                // if remainder fit the bit
-                                if (remainder > carry) {
-                                        number1->digits[i] += carry;
-                                        carry = 0;
-                                } else {
-                                        remainder = carry - remainder;
-                                        number1->digits[i] = remainder;
-                                        carry = 1;
-                                }
+                        summary = (long long unsigned)number1->digits[i] +
+                         (long long unsigned)number2->digits[i] + carry;
+                        number1->digits[i] = (unsigned int)summary;
+                        carry = summary >> (sizeof(unsigned int) * 8);
+                }
+                
+                if (number1->digits[0] > number2->digits[0]) {
+                        int i = min_length + 1;
+                        summary = (unsigned int)(number2->high_digit & max_number_i) + number1->digits[i] + carry;
+                        number1->digits[i] = (unsigned int)summary;
+                        carry = summary >> (sizeof(unsigned int) * 8);
+                        i++;
+                        while ((carry != 0) && (i <= number1->digits[0])) {
+                                summary = (long long unsigned)number1->digits[i] + carry;
+                                number1->digits[i] = (unsigned int)summary;
+                                carry = summary >> (sizeof(unsigned int) * 8);
+                                i++;
+                        }
+                } else if (number1->digits[0] < number2->digits[0]) {
+                        int i = min_length + 1;
+                        number1->digits = (unsigned int*)realloc(number1->digits, (number1->digits[0] +
+                         (number2->digits[0] - min_length) + 1) * sizeof(unsigned int));
+                        number1->digits[0] += (number2->digits[0] - min_length);
+
+                        summary = (unsigned int)(number1->high_digit & max_number_i) + number2->digits[i] + carry;
+                        number1->digits[i] = (unsigned int)summary;
+                        carry = summary >> (sizeof(unsigned int) * 8);
+                        i++;
+
+                        while (i <= number2->digits[0]) {
+                                summary = (long long unsigned)number2->digits[i] + carry;
+                                number1->digits[i] = (unsigned int)summary;
+                                carry = summary >> (sizeof(unsigned int) * 8);
+                                i++;
                         }
 
-                        // summary of two numbers
-                        remainder = max_number_ui - number1->digits[i];
-
-                        // if remainder is greater than second number it means that sum is suitable for this position
-                        if (remainder > number2->digits[i]) {
-                                number1->digits[i] += number2->digits[i];
-                                continue;
-                        }
-                        // otherwise it is greater than max number, carry is set to 1 and 
-                        remainder = number2->digits[i] - remainder;
-                        carry++;
-
-                }
-                // proccess the carried value
-                char sign = (number1->high_digit & sign_mask) ? 1 : 0;
-                if (sign) {
-                        number1->high_digit *= -1;
-                        number2->high_digit *= -1;
-                }
-                if (carry != 0) {
-                        remainder = max_number_i - number1->high_digit;
-                        // if remainder fit the bit
-                        if (remainder > carry) {
-                                number1->high_digit += carry;
-                                carry = 0;
-                        } else {
-                                remainder = carry - remainder;
-                                number1->high_digit = remainder;
-                                carry = 1;
-                        }
-                }
-
-                // summary of two numbers
-                remainder = max_number_i - number1->high_digit;
-
-                // if remainder is greater than second number it means that sum is suitable for this position
-                if (remainder > number2->high_digit) {
-                        number1->high_digit += number2->high_digit;
+                        number1->high_digit = number2->high_digit;
                 } else {
-                        // otherwise it is greater than max number, carry is set to 1 and 
-                        remainder = number2->high_digit - remainder;
-                        carry++;
+                        int sign = number1->high_digit & sign_mask;
+                        unsigned int abs_high1 = number1->high_digit & max_number_i;
+                        unsigned int abs_high2 = number2->high_digit & max_number_i;
+                        summary = (unsigned long long)abs_high1 + abs_high2 + carry;
+                        unsigned int new_high = (unsigned int)summary;
+                        carry = summary >> (sizeof(int) * 8);
+                        if (carry != 0) {
+                                number1->digits = (unsigned int*)realloc(number1->digits, 
+                                (number1->digits[0] + 2) * sizeof(unsigned int));
+                                number1->digits[0]++;
+                                number1->digits[number1->digits[0]] = new_high;
+                        } else {
+                                number1->high_digit = new_high;
+                        }
+                        if (sign) number1->high_digit *= -1;
                 }
 
-                // distribute remaining carry value
-                if (carry) {
-                        number1->digits = realloc(number1->digits, (number1->digits[0] + 2) * sizeof(unsigned int));
-                        number1->digits[number1->digits[0]] = (unsigned int)(number1->high_digit) + carry;
-                        number1->high_digit = 0;
-                }
-
-                // return sign
-                if (sign) {
-                        number1->high_digit *= -1;
-                        number2->high_digit *= -1;
-                }
                 return number1;
         } else {
-                printf("What a hell, I won't work with it, do it by yourself bro.");
+                // determine greater number out of two
+                Bigint* great_number = NULL;
+                Bigint* less_number = NULL;        
+                if (number1->digits[0] > number2->digits[0]) {
+                        great_number = number1; 
+                        less_number = number2;
+                } else if (number1->digits[0] < number2->digits[0]) {
+                        great_number = number2;
+                        less_number = number1;
+                } else if (number1->high_digit >= number2->high_digit) {
+                        great_number = number1;
+                        less_number = number2;
+                } else {
+                        great_number = number2;
+                        less_number = number1;
+                }
         }
 }
 
 int main(void) {
-        char* a = "2129457989784522267299";
+        char* a = "-21294579897845434784556789046789522267299";
         // char* a = "4267399";
         Bigint* number1 = init();
         assign_value(number1, a);
@@ -239,7 +221,7 @@ int main(void) {
 
         printf("+\n");
 
-        char* b = "1423564989346289667299";
+        char* b = "-1423564989346289667299";
         // char* b = "4294946";
         Bigint* number2 = init();
         assign_value(number2, b);
