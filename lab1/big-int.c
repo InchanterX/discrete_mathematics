@@ -167,35 +167,6 @@ void assign_value(Bigint* number, char* value) {
         }
 }
 
-void number_debug(Bigint* number) {
-        if (number == NULL) {
-                printf("Number is not initilized!\n");
-                return;
-        } else {
-                if (number->high_digit >> (sizeof(int) * 8 - 1)) {
-                        printf("-%9.dh ",number->high_digit - (1 << (sizeof(int) * 8 - 1)));
-                } else {
-                        printf("%9.dh ",number->high_digit);
-                }
-                if (!(number->digits)) {
-                        printf("None");
-                } else {
-                        for (int i = number->digits[0]; i > 0; i--) {
-                                printf("%10.u ", number->digits[i]);
-                        }
-                }
-        }
-        if (!(number->digits)) {
-                printf("(Digits: 1) (Memory: %lu)\n", sizeof(int));
-        } else {
-                printf("(Digits: %u) (Memory: %lu)\n", number->digits[0] + 1, (number->digits[0] + 1) * sizeof(unsigned int) + sizeof(int));
-        }
-}
-
-void print_number (Bigint* number) {
-        ;
-}
-
 void normolize(Bigint* number) {
         unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1));
         unsigned int max_number_i = ~sign_mask;
@@ -221,6 +192,36 @@ void normolize(Bigint* number) {
         if (!temp_ptr) return;
         number->digits = temp_ptr;
         return;
+}
+
+void print_number(Bigint* number) {
+}
+
+void number_debug(Bigint* number) {
+        if (number == NULL) {
+                printf("Number is not initilized!\n");
+                return;
+        } else {
+                if (number->high_digit >> (sizeof(int) * 8 - 1)) {
+                        printf("-%9.dh ",number->high_digit - (1 << (sizeof(int) * 8 - 1)));
+                } else {
+                        printf("%9.dh ",number->high_digit);
+                }
+                if (!(number->digits)) {
+                        printf("None");
+                } else {
+                        for (int i = number->digits[0]; i > 0; i--) {
+                                printf("%10.u ", number->digits[i]);
+                        }
+                }
+        }
+        if (!(number->digits)) {
+                printf("(Digits: 1) (Memory: %lu) Content: ", sizeof(int));
+        } else {
+                printf("(Digits: %u) (Memory: %lu) Content: ", number->digits[0] + 1, (number->digits[0] + 1) * sizeof(unsigned int) + sizeof(int));
+        }
+        print_number(number);
+        printf("\n");
 }
 
 Bigint* sum(Bigint* number1, Bigint* number2) {
@@ -423,7 +424,7 @@ Bigint* mult(Bigint* number1, Bigint* number2) {
         if (number1 == NULL || number2 == NULL) return NULL;
 
         // Auxilary variables
-        unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1));
+        unsigned int sign_mask = (1 << ((sizeof(unsigned int) << 3) - 1));
         unsigned int value_mask = ~sign_mask;
 
         // Multiplication variables
@@ -566,8 +567,6 @@ int main(void) {
 
         // Bigint* number3 = sum(number1, number2);
         // number_debug(number3);
-
-        printf("%lu",(sizeof(unsigned int) << 3));
 
         char* a = "1423564989346289667299";
         Bigint* number1 = init();
