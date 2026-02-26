@@ -167,9 +167,9 @@ void assign_value(Bigint* number, char* value) {
         }
 }
 
-void print_number(Bigint* number) {
+void number_debug(Bigint* number) {
         if (number == NULL) {
-                printf("Number is not initilized!");
+                printf("Number is not initilized!\n");
                 return;
         } else {
                 if (number->high_digit >> (sizeof(int) * 8 - 1)) {
@@ -177,14 +177,23 @@ void print_number(Bigint* number) {
                 } else {
                         printf("%9.dh ",number->high_digit);
                 }
-                for (int i = number->digits[0]; i > 0; i--) {
-                        printf("%10.u ", number->digits[i]);
+                if (!(number->digits)) {
+                        printf("None");
+                } else {
+                        for (int i = number->digits[0]; i > 0; i--) {
+                                printf("%10.u ", number->digits[i]);
+                        }
                 }
         }
-        // printf("\n");
-        // printf("\b\n");
-        // printBits(4294967295 >> (sizeof(int) * 8 - 1));
-        printf("(Digits: %u) (Memory: %lu)\n", number->digits[0] + 1, (number->digits[0] + 1) * sizeof(unsigned int) + sizeof(int));
+        if (!(number->digits)) {
+                printf("(Digits: 1) (Memory: %lu)\n", sizeof(int));
+        } else {
+                printf("(Digits: %u) (Memory: %lu)\n", number->digits[0] + 1, (number->digits[0] + 1) * sizeof(unsigned int) + sizeof(int));
+        }
+}
+
+void print_number (Bigint* number) {
+        ;
 }
 
 void normolize(Bigint* number) {
@@ -208,8 +217,10 @@ void normolize(Bigint* number) {
         }
 
         number->digits[0] -= cnt;
-        number->digits = (unsigned int*)realloc(number->digits, (number->digits[0] + 1) * sizeof(unsigned int));
-        if (number->digits == NULL) return;
+        unsigned int* temp_ptr = (unsigned int*)realloc(number->digits, (number->digits[0] + 1) * sizeof(unsigned int));
+        if (!temp_ptr) return;
+        number->digits = temp_ptr;
+        return;
 }
 
 Bigint* sum(Bigint* number1, Bigint* number2) {
@@ -399,36 +410,177 @@ Bigint* sum(Bigint* number1, Bigint* number2) {
         }
 }
 
+unsigned int loword(int value) {
+    return value & ((1U << (sizeof(value) << 2)) - 1);
+}
+
+unsigned int hiword(int value) {
+    return value & (~((1U << (sizeof(value) << 2)) - 1));
+}
+
 Bigint* mult(Bigint* number1, Bigint* number2) {
-        
+        // Input validation
+        if (number1 == NULL || number2 == NULL) return NULL;
+
+        // Auxilary variables
+        unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1));
+        unsigned int value_mask = ~sign_mask;
+
+        // Multiplication variables
+        long long unsigned carry = 0;
+        unsigned int loword1, loword2, hiword1, hiword2;
+        unsigned int interim_value1, interim_value2;
+        unsigned int product_high, product_cross1, product_cross2, product_low;
+        long long unsigned sum1;
+        Bigint* result = init();
+
+        // Case of one number being equal to zero
+        if ((!(number1->digits) && (number1->high_digit & sign_mask)) || 
+                (!(number2->digits) && (number2->high_digit & sign_mask))) {
+                result->high_digit = 0;
+                return result;
+        }
+
+        // Product sign determination
+        unsigned int sign = 0;
+        if (((number1->high_digit & sign_mask) > 0) ^ ((number2->high_digit & sign_mask) > 0)) sign = 1;
+
+        // Calculating maximum length of the product + technical space, lengths separetely
+        unsigned int result_length = 3;
+        unsigned int first_length = 1, second_length = 1;
+        if (number1->digits) {
+                result_length += (number1->digits[0] + 1);
+                first_length += (number1->digits[0] + 1);
+        }
+        if (number2->digits) {
+                result_length += number2->digits[0];
+                second_length += number2->digits[0];
+        }
+
+        // !!! There is a memory leak here. It can be fixed by modifing init function !!! 
+        // Memory allocation for the product 
+        unsigned int* temp_ptr = (unsigned int*)calloc(result_length, sizeof(unsigned int));
+        if (!temp_ptr) return NULL;
+        result->digits = temp_ptr;
+        result->digits[0] = result_length - 1;
+
+        printf("4");
+
+        // Long multiplication algorithm
+        for (int i = 1; i < first_length; i++) {
+                carry = 0;
+
+                // Split digit of the first number to loword and hiword
+                if (i == first_length) {
+                        loword1 = loword(number1->high_digit);
+                        hiword1 = (hiword(number1->high_digit & value_mask)) >> (sizeof(unsigned int) << 1);
+                } else {
+                        loword1 = loword(number1->digits[i]);
+                        hiword1 = (hiword(number1->digits[i])) >> (sizeof(unsigned int) << 1);
+                }
+
+                for (int j = 1; j < second_length; j++) {
+
+                        // Split digit of the second number to loword and hiword
+                        if (j == second_length) {
+                                loword2 = loword(number2->high_digit);
+                                hiword2 = (hiword(number2->high_digit & value_mask)) >> (sizeof(unsigned int) << 1);
+                        } else {
+                                loword2 = loword(number2->digits[j]);
+                                hiword2 = (hiword(number2->digits[j])) >> (sizeof(unsigned int) << 1);
+                        }
+
+                        // Multiplication of the digits' elements
+                        product_low = loword1 * loword2;
+                        product_cross1 = loword1 * hiword2;
+                        product_cross2 = loword2 * hiword1;
+                        product_high = hiword1 * hiword2;
+
+                        // Cross-elements summation
+                        interim_value1 = (loword(product_cross1) >> (sizeof(unsigned int) << 1)) +
+                        (loword(product_cross2) >> (sizeof(unsigned int) << 1));
+                        interim_value2 = hiword(product_cross1) + hiword(product_cross2);
+
+                        // Overflow value determination and current vakue assignment
+                        sum1 = product_low + interim_value1 + carry;
+                        carry = ((long long unsigned)sum1 + (long long unsigned)result->digits[i + j - 1]) >> 
+                        (sizeof(unsigned int) << 3);
+                        carry += (product_high + interim_value2);
+                        result->digits[i + j - 1] += sum1;
+                }
+
+                // add remainder to the next digit
+                if (carry) result->digits[i + second_length - 1] += carry;
+        }
+
+        // Result normalization
+        normolize(result);
+        if (result->digits[0] && result->digits[0] > 0 && result->digits[result->digits[0]] <= value_mask) {
+                result->high_digit = result->digits[result->digits[0]];
+
+                unsigned int new_length = result->digits[0] - 1;
+
+                if (new_length == 0) {
+                        free(result->digits);
+                        result->digits = NULL;
+                } else {
+                        unsigned int* temp_ptr = 
+                        (unsigned int*)realloc(result->digits, (new_length + 1) * sizeof(unsigned int));
+                        if (!temp_ptr) return NULL;
+                        result->digits = temp_ptr;
+                }
+
+                result->digits[0] = new_length;
+        }
+
+        // Sign assignment
+        if (sign) result->high_digit |= sign_mask;
+
+        return result;
 }
 
 int main(void) {
-        char* a = "-21294579897845434784556789046789522267299";
-        // char* a = "-1423564989346289667299";
-        // char* a = "-42";
-        // char* a = "47345897893450224385723751231272112";
-        // char* a = "-97345897893450224385723751231272112000";
-        // char* a = "97345897893450224385723751231272112000";
+        // char* a = "-21294579897845434784556789046789522267299";
+        // // char* a = "-1423564989346289667299";
+        // // char* a = "-42";
+        // // char* a = "47345897893450224385723751231272112";
+        // // char* a = "-97345897893450224385723751231272112000";
+        // // char* a = "97345897893450224385723751231272112000";
+        // Bigint* number1 = init();
+        // assign_value(number1, a);
+        // number_debug(number1);
+
+        // printf("+\n");
+
+        // char* b = "1423564989346289667299";
+        // // char* b = "21294579897845434784556789046789522267299";
+        // // char* b = "4";
+        // // char* b = "-47345897893450224385723751231356913";
+        // // char* b = "-97345897893450224385723751231272112000";
+        // // char* b = "-97345897893450224385723751231272112000";
+        // Bigint* number2 = init();
+        // assign_value(number2, b);
+        // number_debug(number2);
+
+        // printf("=\n");
+
+        // Bigint* number3 = sum(number1, number2);
+        // number_debug(number3);
+
+        printf("%lu",(sizeof(unsigned int) << 3));
+
+        char* a = "1423564989346289667299";
         Bigint* number1 = init();
         assign_value(number1, a);
-        print_number(number1);
+        number_debug(number1);
 
-        printf("+\n");
-
-        char* b = "1423564989346289667299";
-        // char* b = "21294579897845434784556789046789522267299";
-        // char* b = "4";
-        // char* b = "-47345897893450224385723751231356913";
-        // char* b = "-97345897893450224385723751231272112000";
-        // char* b = "-97345897893450224385723751231272112000";
+        char* b = "263390250395733";
         Bigint* number2 = init();
         assign_value(number2, b);
-        print_number(number2);
+        number_debug(number2);
 
-        printf("=\n");
+        Bigint* result = mult(number1, number2);
+        number_debug(result);
 
-        Bigint* number3 = sum(number1, number2);
-        print_number(number3);
         return SUCCESS;
 }
