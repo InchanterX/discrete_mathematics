@@ -8,6 +8,12 @@
 #define INCORRECT_INPUT 2
 #define BASE (sizeof(int) * 8)
 
+#define BASE_BITS   (8u * (unsigned)sizeof(unsigned int))
+#define BASE_ULL    (1ULL << BASE_BITS)
+#define DIGIT_MASK  ((unsigned long long)UINT_MAX)
+#define SIGN_MASK_U ((unsigned int)(1u << (BASE_BITS - 1u)))
+#define ABS_MASK_U  ((unsigned int)(SIGN_MASK_U - 1u))
+
 typedef struct Bigint {
         int high_digit;
         unsigned int* digits;
@@ -24,7 +30,21 @@ void printBits(unsigned int x) {
             printf(" ");
         }
     }
-    printf("\n");
+    // printf("\n");
+}
+
+void printBits_long(long long unsigned x) {
+    int bits = sizeof(x) * CHAR_BIT;
+    
+    for (int i = bits - 1; i >= 0; i--) {
+        unsigned int bit = (x >> i) & 1;
+        printf("%u", bit);
+        
+        if (i % 8 == 0 && i != 0) {
+            printf(" ");
+        }
+    }
+    // printf("\n");
 }
 
 void small_multiply(Bigint* number, int value) {
@@ -194,7 +214,45 @@ void normolize(Bigint* number) {
         return;
 }
 
+unsigned int get_word(Bigint* number, unsigned int i) {
+    if (i < number->digits[0])  return number->digits[i + 1u];
+    if (i == number->digits[0]) return (unsigned int)number->high_digit & ABS_MASK_U;
+    return 0u;
+}
+
 void print_number(Bigint* number) {
+        unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1)); 
+        if (((unsigned int)number->high_digit & ABS_MASK_U) == 0 && number->digits[0] == 0) {
+                puts("0"); return;
+        }
+        if (number->high_digit & sign_mask) putchar('-');
+
+        unsigned int n = number->digits[0] + 1u;
+        unsigned int *buffer = (unsigned int *)malloc(n * sizeof(unsigned int));
+        if (!buffer) { printf("Memory error!\n"); return; }
+        for (unsigned int i = 0; i < n; i++) buffer[i] = get_word(number, i);
+
+        char digits[8192];
+        int  position = 0;
+
+        while (1) {
+                unsigned int topnz = n;
+                while (topnz > 0 && buffer[topnz - 1u] == 0) topnz--;
+                if (topnz == 0) break;
+
+                unsigned long long remainer = 0;
+                for (int i = (int)topnz - 1; i >= 0; i--) {
+                    unsigned long long current = remainer * BASE_ULL + buffer[i];
+                    buffer[i] = (unsigned int)(current / 10u);
+                    remainer = current % 10u;
+        }
+        digits[position++] = (char)('0' + (int)remainer);
+        if (position >= (int)sizeof(digits) - 1) break;
+    }
+    free(buffer);
+
+    for (int i = position - 1; i >= 0; i--) putchar(digits[i]);
+    putchar('\n');
 }
 
 void number_debug(Bigint* number) {
@@ -203,15 +261,21 @@ void number_debug(Bigint* number) {
                 return;
         } else {
                 if (number->high_digit >> (sizeof(int) * 8 - 1)) {
-                        printf("-%9.dh ",number->high_digit - (1 << (sizeof(int) * 8 - 1)));
+                        printf("-%9.d(",number->high_digit - (1 << (sizeof(int) * 8 - 1)));
+                        printBits(number->high_digit);
+                        printf(")h ");   
                 } else {
-                        printf("%9.dh ",number->high_digit);
+                        printf("%9.d(",number->high_digit);
+                        printBits(number->high_digit);
+                        printf(")h ");   
                 }
                 if (!(number->digits)) {
                         printf("None");
                 } else {
                         for (int i = number->digits[0]; i > 0; i--) {
-                                printf("%10.u ", number->digits[i]);
+                                printf("%10.u(", number->digits[i]);
+                                printBits(number->digits[i]);
+                                printf(") ");
                         }
                 }
         }
@@ -430,14 +494,15 @@ Bigint* mult(Bigint* number1, Bigint* number2) {
         // Multiplication variables
         long long unsigned carry = 0;
         unsigned int loword1, loword2, hiword1, hiword2;
-        unsigned int interim_value1, interim_value2;
+        long long unsigned interim_value1, interim_value2;
         unsigned int product_high, product_cross1, product_cross2, product_low;
         long long unsigned sum1;
+        long long unsigned buffer_carry = 0;
         Bigint* result = init();
 
         // Case of one number being equal to zero
-        if ((!(number1->digits) && (number1->high_digit & sign_mask)) || 
-                (!(number2->digits) && (number2->high_digit & sign_mask))) {
+        if ((!number1->digits && !(number1->high_digit & value_mask)) || 
+                (!number2->digits && !(number2->high_digit & value_mask))) {
                 result->high_digit = 0;
                 return result;
         }
@@ -448,14 +513,15 @@ Bigint* mult(Bigint* number1, Bigint* number2) {
 
         // Calculating maximum length of the product + technical space, lengths separetely
         unsigned int result_length = 3;
-        unsigned int first_length = 1, second_length = 1;
+        unsigned int first_length = 0, second_length = 0;
         if (number1->digits) {
                 result_length += (number1->digits[0] + 1);
                 first_length += (number1->digits[0] + 1);
         }
         if (number2->digits) {
-                result_length += number2->digits[0];
-                second_length += number2->digits[0];
+                result_length += (number2->digits[0] + 1);
+                second_length += (number2->digits[0] + 1);
+                printf("%u %u\n", second_length, number2->digits[0]);
         }
 
         // !!! There is a memory leak here. It can be fixed by modifing init function !!! 
@@ -465,31 +531,43 @@ Bigint* mult(Bigint* number1, Bigint* number2) {
         result->digits = temp_ptr;
         result->digits[0] = result_length - 1;
 
-        printf("4");
-
         // Long multiplication algorithm
-        for (int i = 1; i < first_length; i++) {
+        for (int i = 1; i <= first_length; i++) {
+                printf("%d / %u\n", i, first_length);
                 carry = 0;
 
                 // Split digit of the first number to loword and hiword
                 if (i == first_length) {
+                        printf("Marker!\n");
                         loword1 = loword(number1->high_digit);
-                        hiword1 = (hiword(number1->high_digit & value_mask)) >> (sizeof(unsigned int) << 1);
+                        hiword1 = (hiword(number1->high_digit & value_mask)) >> (sizeof(unsigned int) << 2);
                 } else {
                         loword1 = loword(number1->digits[i]);
-                        hiword1 = (hiword(number1->digits[i])) >> (sizeof(unsigned int) << 1);
+                        hiword1 = (hiword(number1->digits[i])) >> (sizeof(unsigned int) << 2);
                 }
+                printf("lowordI%d: %u(", i, loword1);
+                printBits(loword1);
+                printf(")\n");
+                printf("hiwordI%d: %u(", i, hiword1);
+                printBits(hiword1);
+                printf(")\n");
 
-                for (int j = 1; j < second_length; j++) {
-
+                for (int j = 1; j <= second_length; j++) {
+                        printf("    %d / %u\n", j, second_length);
                         // Split digit of the second number to loword and hiword
                         if (j == second_length) {
                                 loword2 = loword(number2->high_digit);
-                                hiword2 = (hiword(number2->high_digit & value_mask)) >> (sizeof(unsigned int) << 1);
+                                hiword2 = (hiword(number2->high_digit & value_mask)) >> (sizeof(unsigned int) << 2);
                         } else {
                                 loword2 = loword(number2->digits[j]);
-                                hiword2 = (hiword(number2->digits[j])) >> (sizeof(unsigned int) << 1);
+                                hiword2 = (hiword(number2->digits[j])) >> (sizeof(unsigned int) << 2);
                         }
+                        printf("    lowordJ%d: %u(", j, loword2);
+                        printBits(loword2);
+                        printf(")\n");
+                        printf("    hiwordJ%d: %u(", j, hiword2);
+                        printBits(hiword2);
+                        printf(")\n");
 
                         // Multiplication of the digits' elements
                         product_low = loword1 * loword2;
@@ -497,26 +575,82 @@ Bigint* mult(Bigint* number1, Bigint* number2) {
                         product_cross2 = loword2 * hiword1;
                         product_high = hiword1 * hiword2;
 
-                        // Cross-elements summation
-                        interim_value1 = (loword(product_cross1) >> (sizeof(unsigned int) << 1)) +
-                        (loword(product_cross2) >> (sizeof(unsigned int) << 1));
-                        interim_value2 = hiword(product_cross1) + hiword(product_cross2);
+                        printf("    Products(crs1, crs2, low, high): %u %u %u %u\n",product_cross1, product_cross2, product_low, product_high);
 
+                        // Cross-elements summation
+                        interim_value1 = (long long unsigned)(loword(product_cross1) << (sizeof(unsigned int) << 2)) + 
+                        (loword(product_cross2) << (sizeof(unsigned int) << 2));
+                        interim_value2 = 
+                        (long long unsigned) (hiword(product_cross1) >> (sizeof(unsigned int) << 2)) +
+                        (hiword(product_cross2) >> (sizeof(unsigned int) << 2));
+
+                        printf("    Iloword1: %u(", loword(product_cross1));
+                        printBits(loword(product_cross1));
+                        printf(")\n");
+                        printf("    Iloword2: %u(", loword(product_cross2));
+                        printBits(loword(product_cross2));
+                        printf(")\n");
+                        printf("    Ihiword1: %u(", (hiword(product_cross1) >> (sizeof(unsigned int) << 2)));
+                        printBits((hiword(product_cross1) >> (sizeof(unsigned int) << 2)));
+                        printf(")\n");
+                        printf("    Ihiword1: %u(", (hiword(product_cross2) >> (sizeof(unsigned int) << 2)));
+                        printBits((hiword(product_cross2) >> (sizeof(unsigned int) << 2)));
+                        printf(")\n");
+
+
+                        printf("    Interin1, 2: %llu %llu\n", interim_value1, interim_value2);
+                        printf("    ");
+                        printBits_long(interim_value1);
+                        printf("   ");
+                        printBits_long(interim_value2);
+                        printf("\n");
+                        // interim_value1 <<= (sizeof(unsigned int) << 2);
+
+                        printf("    Carry(prev): %llu\n", carry);
+                        printf("    Current value: %u\n", result->digits[i + j - 1]);
                         // Overflow value determination and current vakue assignment
-                        sum1 = product_low + interim_value1 + carry;
-                        carry = ((long long unsigned)sum1 + (long long unsigned)result->digits[i + j - 1]) >> 
-                        (sizeof(unsigned int) << 3);
-                        carry += (product_high + interim_value2);
-                        result->digits[i + j - 1] += sum1;
+                        // sum1 = (long long unsigned)product_low + interim_value1 + carry;
+                        // carry = ((long long unsigned)sum1 + (long long unsigned)result->digits[i + j - 1]) >> 
+                        // (sizeof(unsigned int) << 3);
+                        // carry += (product_high + interim_value2);
+                        // result->digits[i + j - 1] += sum1;
+                        // printf("    Sum: %llu(", sum1);
+                        // printBits_long(sum1);
+                        // printf(")\n");
+                        // printf("    Carry: %llu(", carry);
+                        // printBits_long(carry);
+                        // printf(")\n");
+                        // printf("    Result: %u(", result->digits[i + j - 1]);
+                        // printBits(result->digits[i + j - 1]);
+                        // printf(")\n");
+                        // printf("\n");
+                        unsigned long long full =
+                                (unsigned long long)product_low
+                              + interim_value1
+                              + ((unsigned long long)(product_high + interim_value2) << (sizeof(unsigned int) << 3))
+                              + result->digits[i + j - 1]
+                              + carry;
+
+                        result->digits[i + j - 1] = (unsigned int)full;
+
+                        carry = full >> (sizeof(unsigned int) << 3);
                 }
 
+                printf("    Remainer: %llu\n", carry);
                 // add remainder to the next digit
-                if (carry) result->digits[i + second_length - 1] += carry;
+                unsigned int shift = 0;
+                while (carry) {
+                        buffer_carry = (carry + result->digits[i + second_length + shift]) >> (sizeof(unsigned int) << 3);
+                        result->digits[i + second_length + shift] += carry;
+                        carry = buffer_carry;
+                        printf("    Next_res: %u\n", result->digits[i + second_length + shift]);
+                        shift++;
+                }
+                printf("\n");
         }
 
-        // Result normalization
         normolize(result);
-        if (result->digits[0] && result->digits[0] > 0 && result->digits[result->digits[0]] <= value_mask) {
+        if (result->digits && result->digits[0] > 0 && result->digits[result->digits[0]] <= value_mask) {
                 result->high_digit = result->digits[result->digits[0]];
 
                 unsigned int new_length = result->digits[0] - 1;
@@ -568,15 +702,17 @@ int main(void) {
         // Bigint* number3 = sum(number1, number2);
         // number_debug(number3);
 
-        char* a = "1423564989346289667299";
+        char* a = "142356498934629";
         Bigint* number1 = init();
         assign_value(number1, a);
         number_debug(number1);
 
-        char* b = "263390250395733";
+        char* b = "263390253433";
         Bigint* number2 = init();
         assign_value(number2, b);
         number_debug(number2);
+
+        printf("\n\n");
 
         Bigint* result = mult(number1, number2);
         number_debug(result);
