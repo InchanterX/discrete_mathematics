@@ -31,7 +31,6 @@ void printBits(unsigned int x) {
             printf(" ");
         }
     }
-    // printf("\n");
 }
 
 void printBits_long(long long unsigned x) {
@@ -45,7 +44,6 @@ void printBits_long(long long unsigned x) {
             printf(" ");
         }
     }
-    // printf("\n");
 }
 
 void small_multiply(Bigint* number, int value) {
@@ -91,8 +89,9 @@ void small_multiply(Bigint* number, int value) {
         }
 
         if (carry) {
-                number->digits = realloc(number->digits, (number->digits[0] + 2) * sizeof(unsigned int));
-                if (number->digits == NULL) return;
+                unsigned int* temp_ptr = realloc(number->digits, (number->digits[0] + 2) * sizeof(unsigned int));
+                if (temp_ptr == NULL) return;
+                number->digits = temp_ptr;
                 number->digits[0]++;
                 number->digits[number->digits[0]] = (unsigned int)carry;
         }
@@ -180,8 +179,9 @@ void assign_value(Bigint* number, char* value) {
                 number->high_digit = number->digits[number->digits[0]];
                 number->digits[number->digits[0]] = 0;
                 number->digits[0]--;
-                number->digits = (unsigned int*)realloc(number->digits, (number->digits[0] + 1) * sizeof(unsigned int));
-                if (number->digits == NULL) return;
+                unsigned int* temp_ptr = (unsigned int*)realloc(number->digits, (number->digits[0] + 1) * sizeof(unsigned int));
+                if (temp_ptr == NULL) return;
+                number->digits = temp_ptr;
         }
         if (negative) {
                 number->high_digit |= (1U << (sizeof(unsigned int) * 8 - 1));
@@ -246,14 +246,14 @@ void print_number(Bigint* number) {
                     unsigned long long current = remainer * BASE_ULL + buffer[i];
                     buffer[i] = (unsigned int)(current / 10u);
                     remainer = current % 10u;
+                }
+                digits[position++] = (char)('0' + (int)remainer);
+                if (position >= (int)sizeof(digits) - 1) break;
         }
-        digits[position++] = (char)('0' + (int)remainer);
-        if (position >= (int)sizeof(digits) - 1) break;
-    }
-    free(buffer);
+        free(buffer);
 
-    for (int i = position - 1; i >= 0; i--) putchar(digits[i]);
-    putchar('\n');
+        for (int i = position - 1; i >= 0; i--) putchar(digits[i]);
+        putchar('\n');
 }
 
 void number_debug(Bigint* number) {
@@ -309,9 +309,10 @@ void sum_interior(Bigint* number1, Bigint* number2) {
                         unsigned int new_high = (unsigned int)summary;
                         carry = summary >> (sizeof(unsigned int) * 8);
                         if (carry != 0) {
-                                number1->digits = (unsigned int*)realloc(number1->digits, 
+                                unsigned int* temp_ptr = (unsigned int*)realloc(number1->digits, 
                                 (number1->digits[0] + 2) * sizeof(unsigned int));
-                                if (number1->digits == NULL) return;
+                                if (temp_ptr == NULL) return;
+                                number1->digits = temp_ptr;
                                 number1->digits[0]++;
                                 number1->digits[number1->digits[0]] = new_high;
                         } else {
@@ -342,9 +343,10 @@ void sum_interior(Bigint* number1, Bigint* number2) {
                         }
                 } else if (number1->digits[0] < number2->digits[0]) {
                         int i = min_length + 1;
-                        number1->digits = (unsigned int*)realloc(number1->digits, (number1->digits[0] +
+                        unsigned int* temp_ptr = (unsigned int*)realloc(number1->digits, (number1->digits[0] +
                          (number2->digits[0] - min_length) + 1) * sizeof(unsigned int));
-                        if (number1->digits == NULL) return;
+                        if (temp_ptr == NULL) return;
+                        number1->digits = temp_ptr;
                         number1->digits[0] += (number2->digits[0] - min_length);
 
                         summary = (unsigned int)(number1->high_digit & max_number_i) + number2->digits[i] + carry;
@@ -368,9 +370,10 @@ void sum_interior(Bigint* number1, Bigint* number2) {
                         unsigned int new_high = (unsigned int)summary;
                         carry = summary >> (sizeof(unsigned int) * 8);
                         if (carry != 0 || (new_high > max_number_i)) {
-                                number1->digits = (unsigned int*)realloc(number1->digits, 
+                                unsigned int* temp_ptr = (unsigned int*)realloc(number1->digits, 
                                 (number1->digits[0] + 2) * sizeof(unsigned int));
-                                if (number1->digits == NULL) return;
+                                if (temp_ptr == NULL) return;
+                                number1->digits = temp_ptr;
                                 number1->digits[0]++;
                                 number1->digits[number1->digits[0]] = new_high + carry;
                                 number1->high_digit &= sign_mask;
@@ -476,33 +479,29 @@ void sum_interior(Bigint* number1, Bigint* number2) {
 }
 
 Bigint* sum_external(Bigint* number1, Bigint* number2) {
-    if (!number1 || !number2) return NULL;
+        if (number1 == NULL || number2 == NULL) return NULL;
 
-    // Original deep copy
-    Bigint* original = init();
-    original->high_digit = number1->high_digit;
+        Bigint* result = init();
+        if (result == NULL) return NULL;
 
-    original->digits = malloc((number1->high_digit + 1) * sizeof(unsigned int));
-    memcpy(original->digits, number1->digits, (number1->high_digit + 1) * sizeof(unsigned int));
+        result->high_digit = number1->high_digit;
 
-    // Summation
-    sum_interior(number1, number2);
+        if (number1->digits) {
+                unsigned int size = number1->digits[0] + 1;
+                result->digits = (unsigned int*)malloc(size * sizeof(unsigned int));
+                if (result->digits == NULL) {
+                        free(result);
+                        return NULL;
+                }
+                for (unsigned int i = 0; i < size; i++) {
+                        result->digits[i] = number1->digits[i];
+                }
+        } else {
+                result->digits = NULL;
+        }
 
-    // Result deep copy
-    Bigint* result = init();
-    result->high_digit = number1->high_digit;
-
-    result->digits = malloc((number1->high_digit + 1) * sizeof(unsigned int));
-    memcpy(result->digits, number1->digits, (number1->high_digit + 1) * sizeof(unsigned int));
-
-    // Original number value restoration
-    free(number1->digits);
-    number1->high_digit = original->high_digit;
-    number1->digits = original->digits;
-
-    free(original);
-
-    return result;
+        sum_interior(result, number2);
+        return result;
 }
 
 void sub_interior(Bigint* number1, Bigint* number2) {
@@ -537,138 +536,204 @@ unsigned int get_word(Bigint* number, unsigned int index) {
         }
 }
 
-Bigint* mult(Bigint* number1, Bigint* number2) {
-    if (number1 == NULL || number2 == NULL) return NULL;
+Bigint* mult_external(Bigint* number1, Bigint* number2) {
+        if (number1 == NULL || number2 == NULL) return NULL;
 
-    // Calculating lengths
-    unsigned int length1 = number1->digits ? (number1->digits[0] + 1u) : 1u;
-    unsigned int length2 = number2->digits ? (number2->digits[0] + 1u) : 1u;
+        // Calculating lengths
+        unsigned int length1 = number1->digits ? (number1->digits[0] + 1u) : 1u;
+        unsigned int length2 = number2->digits ? (number2->digits[0] + 1u) : 1u;
 
-    Bigint* result = init();
-    if (!result) return NULL;
+        Bigint* result = init();
+        if (!result) return NULL;
 
-    // Case of one number being equal to zero
-    if ((!number1->digits && !(number1->high_digit & ABS_MASK_U)) ||
-        (!number2->digits && !(number2->high_digit & ABS_MASK_U))) {
-        result->high_digit = 0;
-        free(result->digits);
-        result->digits = NULL;
-        return result;
-    }
-
-    // Sign determination
-    unsigned int sign = ((number1->high_digit & SIGN_MASK_U) ^ (number2->high_digit & SIGN_MASK_U)) ? 1u : 0u;
-
-    unsigned int res_words = length1 + length2;
-    unsigned int *res = (unsigned int*)calloc(res_words, sizeof(unsigned int));
-    if (!res) { free(result); return NULL; }
-
-    unsigned int HALF_BITS = (unsigned int)(sizeof(unsigned int) << 2);
-    unsigned int WORD_BITS = (unsigned int)(sizeof(unsigned int) << 3);
-
-    // Long multiplication
-    for (unsigned int i = 0; i < length1; ++i) {
-        for (unsigned int j = 0; j < length2; ++j) {
-            unsigned int a = get_word(number1, i);
-            unsigned int b = get_word(number2, j);
-
-            // Calculating products
-            uint64_t product1 = (uint64_t)loword(a) * (uint64_t)loword(b); // low * low
-            uint64_t product2 = (uint64_t)loword(a) * (uint64_t)hiword(b); // low * hi
-            uint64_t product3 = (uint64_t)hiword(a) * (uint64_t)loword(b); // hi  * low
-            uint64_t product4 = (uint64_t)hiword(a) * (uint64_t)hiword(b); // hi  * hi
-
-            // Calculating split
-            uint64_t middle = product2 + product3;
-            uint64_t buffer = (product4 << (HALF_BITS * 2)) + (middle << HALF_BITS) + product1;
-
-            // Result distribution between current digit and buffer for next digit
-            unsigned int k = i + j;
-            while (buffer && k < res_words) {
-                uint64_t sum = (uint64_t)res[k] + (buffer & (uint64_t)~0u);
-                res[k] = (unsigned int)sum;
-                buffer = (buffer >> WORD_BITS) + (sum >> WORD_BITS);
-                k++;
-            }
+        // Case of one number being equal to zero
+        if ((!number1->digits && !(number1->high_digit & ABS_MASK_U)) ||
+                (!number2->digits && !(number2->high_digit & ABS_MASK_U))) {
+                result->high_digit = 0;
+                free(result->digits);
+                result->digits = NULL;
+                return result;
         }
-    }
 
-    // Trim leading zeros
-    int top = (int)res_words - 1;
-    while (top > 0 && res[top] == 0u) top--;
+        // Sign determination
+        unsigned int sign = ((number1->high_digit & SIGN_MASK_U) ^ (number2->high_digit & SIGN_MASK_U)) ? 1u : 0u;
 
-    // Single digit result
-    if (top == 0 && (res[0] <= (unsigned int)ABS_MASK_U)) {
-        result->high_digit = (int)res[0];
-        free(result->digits);
-        result->digits = NULL;
-    } else {
-        unsigned int lower_count = (unsigned int)top;
-        unsigned int *temp = (unsigned int*)realloc(result->digits, (lower_count + 1u) * sizeof(unsigned int));
-        if (!temp) { free(res); free(result); return NULL; }
-        result->digits = temp;
-        result->digits[0] = lower_count;
-        for (unsigned int kk = 0; kk < lower_count; ++kk) result->digits[kk + 1u] = res[kk];
-        result->high_digit = (int)res[lower_count];
-    }
-    free(res);
+        unsigned int res_words = length1 + length2;
+        unsigned int *res = (unsigned int*)calloc(res_words, sizeof(unsigned int));
+        if (!res) { free(result); return NULL; }
 
-    if (sign) result->high_digit |= SIGN_MASK_U;
-    return result;
+        unsigned int HALF_BITS = (unsigned int)(sizeof(unsigned int) << 2);
+        unsigned int WORD_BITS = (unsigned int)(sizeof(unsigned int) << 3);
+
+        // Long multiplication
+        for (unsigned int i = 0; i < length1; ++i) {
+                for (unsigned int j = 0; j < length2; ++j) {
+                        unsigned int a = get_word(number1, i);
+                        unsigned int b = get_word(number2, j);
+
+                        // Calculating products
+                        uint64_t product1 = (uint64_t)loword(a) * (uint64_t)loword(b); // low * low
+                        uint64_t product2 = (uint64_t)loword(a) * (uint64_t)hiword(b); // low * hi
+                        uint64_t product3 = (uint64_t)hiword(a) * (uint64_t)loword(b); // hi  * low
+                        uint64_t product4 = (uint64_t)hiword(a) * (uint64_t)hiword(b); // hi  * hi
+
+                        // Calculating split
+                        uint64_t middle = product2 + product3;
+                        uint64_t buffer = (product4 << (HALF_BITS * 2)) + (middle << HALF_BITS) + product1;
+
+                        // Result distribution between current digit and buffer for next digit
+                        unsigned int k = i + j;
+                        while (buffer && k < res_words) {
+                                uint64_t sum = (uint64_t)res[k] + (buffer & (uint64_t)~0u);
+                                res[k] = (unsigned int)sum;
+                                buffer = (buffer >> WORD_BITS) + (sum >> WORD_BITS);
+                                k++;
+                        }
+                }
+        }
+
+        // Trim leading zeros
+        int top = (int)res_words - 1;
+        while (top > 0 && res[top] == 0u) top--;
+
+        // Single digit result
+        if (top == 0 && (res[0] <= (unsigned int)ABS_MASK_U)) {
+                result->high_digit = (int)res[0];
+                free(result->digits);
+                result->digits = NULL;
+        // Multiple digits result
+        } else {
+                unsigned int lower_count = (unsigned int)top;
+                unsigned int *temp = (unsigned int*)realloc(result->digits, (lower_count + 1u) * sizeof(unsigned int));
+                if (!temp) { free(res); free(result); return NULL; }
+                result->digits = temp;
+                result->digits[0] = lower_count;
+                for (unsigned int p = 0; p < lower_count; ++p) result->digits[p + 1u] = res[p];
+                result->high_digit = (int)res[lower_count];
+        }           
+        free(res);
+
+        if (sign) result->high_digit |= SIGN_MASK_U;
+        return result;
+}
+
+void mult_internal(Bigint* number1, Bigint* number2) {
+        if (number1 == NULL || number2 == NULL) return;
+
+        Bigint* result = mult_external(number1, number2);
+        number1->high_digit = result->high_digit;
+        number1->digits = malloc((result->high_digit + 1) * sizeof(unsigned int));
+        memcpy(number1->digits, result->digits, (result->high_digit + 1) * sizeof(unsigned int));
 }
 
 int main(void) {
-        // char* a = "-21294579897845434784556789046789522267299";
-        // // char* a = "-1423564989346289667299";
-        // // char* a = "-42";
-        // // char* a = "47345897893450224385723751231272112";
-        // // char* a = "-97345897893450224385723751231272112000";
-        // // char* a = "97345897893450224385723751231272112000";
-        // Bigint* number1 = init();
-        // assign_value(number1, a);
-        // number_debug(number1);
+        // Tests segment
 
-        // printf("+\n");
+        // 1 - interior sum: 0 + 0
+        printf("Test 1\n");
+        char* a1 = "0";
+        Bigint* na1 = init();
+        assign_value(na1, a1);
+        char* b1 = "0";
+        Bigint* nb1 = init();
+        assign_value(nb1, b1);
+        sum_interior(na1, nb1);
+        printf("0\n");
+        print_number(na1);
 
-        // char* b = "1423564989346289667299";
-        // // char* b = "21294579897845434784556789046789522267299";
-        // // char* b = "4";
-        // // char* b = "-47345897893450224385723751231356913";
-        // // char* b = "-97345897893450224385723751231272112000";
-        // // char* b = "-97345897893450224385723751231272112000";
-        // Bigint* number2 = init();
-        // assign_value(number2, b);
-        // number_debug(number2);
+        // 2 - external sum: 0 + 0
+        printf("\nTest 2\n");
+        char* a2 = "0";
+        Bigint* na2 = init();
+        assign_value(na2, a2);
+        char* b2 = "0";
+        Bigint* nb2 = init();
+        assign_value(nb2, b2);
+        Bigint* res_sum00 = sum_external(na2, nb2);
+        printf("0\n");
+        print_number(res_sum00);
 
-        // printf("=\n");
+        // 3 - small numbers that fit into high_digit: 5 + 7 = 12 (interior)
+        printf("\nTest 3\n");
+        Bigint* s1 = init(); assign_value(s1, "5");
+        Bigint* s2 = init(); assign_value(s2, "7");
+        sum_interior(s1, s2);
+        printf("12\n");
+        print_number(s1);
 
-        // Bigint* number3 = sum(number1, number2);
-        // number_debug(number3);
+        // 4 - overflow high_digit -> create multi-word: 2147483647 + 1 (external)
+        printf("\nTest 4\n");
+        Bigint* biga = init(); assign_value(biga, "2147483647");
+        Bigint* bigb = init(); assign_value(bigb, "1");
+        Bigint* res_big = sum_external(biga, bigb);
+        printf("2147483648\n");
+        print_number(res_big);
 
-        // char* a = "142356498934629";
-        char* a = "97345897893450224385723751231272112000";
-        // char* a = "952303585822";
-        Bigint* number1 = init();
-        assign_value(number1, a);
-        number_debug(number1);
+        // 5 - negatives and sign handling (external): -5 + 3 = -2
+        printf("\nTest 5\n");
+        Bigint* n5 = init(); assign_value(n5, "-5");
+        Bigint* p3 = init(); assign_value(p3, "3");
+        Bigint* r53 = sum_external(n5, p3);
+        printf("-2\n");
+        print_number(r53);
 
-        // char* b = "263390253433";
-        // char* b = "21294579897845434784556789046789522267299";
-        char* b = 0;
-        // char* b = "34895023095383";
-        Bigint* number2 = init();
-        assign_value(number2, b);
-        number_debug(number2);
+        // 6 - both negative (interior): -10 + -20 = -30
+        printf("\nTest 6\n");
+        Bigint* n10 = init(); assign_value(n10, "-10");
+        Bigint* n20 = init(); assign_value(n20, "-20");
+        sum_interior(n10, n20);
+        printf("-30\n");
+        print_number(n10);
 
-        printf("\n\n");
+        // Subtraction tests using sub_interior and external-sub via negation + sum_external
 
-        // sub_interior(number1, number2);
-        // Bigint* result = sum_external(number1, number2);
-        // number_debug(number1);
-        // number_debug(result);
+        // 7 - sub_interior: 7 - 5 = 2
+        printf("\nTest 7\n");
+        Bigint* suba = init(); assign_value(suba, "7");
+        Bigint* subb = init(); assign_value(subb, "5");
+        sub_interior(suba, subb);   // suba := suba - subb
+        printf("2\n");
+        print_number(suba);
 
-        Bigint* result = mult(number1, number2);
-        number_debug(result);
+        // 8 - external subtraction (use negation + sum_external): 10000000000 - 1 = 9999999999
+        printf("\nTest 8\n");
+        Bigint* exa = init(); assign_value(exa, "10000000000");
+        Bigint* exb = init(); assign_value(exb, "1");
+        // negate exb for subtraction and use sum_external to get new Bigint*
+        exb->high_digit |= SIGN_MASK_U;
+        Bigint* res_sub_ext = sum_external(exa, exb);
+        printf("9999999999\n");
+        print_number(res_sub_ext);
+
+        // Multiplication tests
+
+        // 9 - mult_internal small: 6 * 7 = 42
+        printf("\nTest 9\n");
+        Bigint* m1 = init(); assign_value(m1, "6");
+        Bigint* m2 = init(); assign_value(m2, "7");
+        mult_internal(m1, m2);
+        printf("42\n");
+        print_number(m1);
+
+        // 10 - mult_external with zero: 123456 * 0 = 0
+        printf("\nTest 10\n");
+        Bigint* mm1 = init(); assign_value(mm1, "123456");
+        Bigint* mm0 = init(); assign_value(mm0, "0");
+        Bigint* res_m0 = mult_external(mm1, mm0);
+        printf("0\n");
+        print_number(res_m0);
+
+        // 11 - larger multiplication (internal) - original big test
+        printf("\nTest 11\n");
+        char* an = "744309584305832935";
+        Bigint* nan = init();
+        assign_value(nan, an);
+        char* bn = "9512075892352375938395204";
+        Bigint* nbn = init();
+        assign_value(nbn, bn);
+        mult_internal(nan, nbn);
+        printf("7079929253322331804219415104297920429243740\n");
+        print_number(nan);
 
         return SUCCESS;
 }
