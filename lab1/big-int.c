@@ -7,8 +7,8 @@
 #define SUCCESS 0
 #define MEMORY_ERROR 1
 #define INCORRECT_INPUT 2
-#define BASE (sizeof(int) * 8)
 
+#define BASE (sizeof(int) * 8)
 #define BASE_BITS   (8u * (unsigned)sizeof(unsigned int))
 #define BASE_ULL    (1ULL << BASE_BITS)
 #define DIGIT_MASK  ((unsigned long long)UINT_MAX)
@@ -47,11 +47,12 @@ void printBits_long(long long unsigned x) {
 }
 
 void small_multiply(Bigint* number, int value) {
-        if (!number || !number->digits) return;
+        if (!number) return;
 
         if (value == 0) {
                 number->high_digit = 0;
-                number->digits[0] = 0;
+                free(number->digits);
+                number->digits = NULL;
                 return;
         }
 
@@ -61,10 +62,10 @@ void small_multiply(Bigint* number, int value) {
         unsigned int sign = number->high_digit & sign_mask;
 
         // in case of empty array
-        if (number->digits[0] == 0) {
+        if (!number->digits) {
                 unsigned int abs_high = number->high_digit & abs_mask;
                 unsigned long long tmp = (unsigned long long)abs_high * value;
-                if ((tmp >> WORD_BITS) == 0) {
+                if (tmp < sign_mask) {
                     number->high_digit = (unsigned int)tmp | sign;
                     return;
                 }
@@ -77,7 +78,7 @@ void small_multiply(Bigint* number, int value) {
                 number->digits[1] = (unsigned int)tmp;
                 number->high_digit = (unsigned int)(tmp >> WORD_BITS) | sign;
                 return;
-            }
+        }
 
         // in case of not empty array
         unsigned long long carry = 0;
@@ -106,12 +107,12 @@ void small_add(Bigint* number, int value) {
         unsigned long long carry = value;
 
         // in case of empty array
-        if (number->digits[0] == 0) {
+        if (!number->digits) {
                 unsigned int abs_high = number->high_digit & abs_mask;
                 unsigned int sign = number->high_digit & sign_mask;
 
                 unsigned long long tmp = (unsigned long long)abs_high + carry;
-                if (tmp <= abs_mask) {
+                if (tmp < sign_mask) {
                     number->high_digit = (unsigned int)tmp | sign;
                     return;
                 }
@@ -136,7 +137,6 @@ void small_add(Bigint* number, int value) {
                 i++;
         } 
         if (carry) {
-                // TODO do this way everywhere to protect the program
                 unsigned int* tmp_ptr = realloc(number->digits, (number->digits[0] + 2) * sizeof(unsigned int));
                 if (!tmp_ptr) return;
                 number->digits = tmp_ptr;
@@ -149,33 +149,22 @@ Bigint* init(void) {
         Bigint* number = (Bigint*)malloc(sizeof(Bigint));
         if (!number) return NULL;
 
-        number->digits = (unsigned int*)malloc(sizeof(unsigned int) * 2);
-        if (!number->digits) {
-                free(number);
-                return NULL;
-        }
-
         number->high_digit = 0;
-        number->digits[0] = 1;
-        number->digits[1] = 0;
+        number->digits = NULL;
         return number;
 }
 
 void assign_value(Bigint* number, char* value) {
-        // TODO check number to be 0 or auto-zero it
-        if (number == NULL) return;
+        if (number == NULL || value == NULL) return;
         char negative = 0;
         char start = 0;
 
-        if (value[0] == '-') {
-                negative = 1;
-                start = 1;
-        }
+        if (value[0] == '-') { negative = 1; start = 1; }
         for (int i = start; i < strlen(value); i++) {
                 small_multiply(number, 10);
                 small_add(number, value[i] - '0');
         }
-        if (number->digits[number->digits[0]] < (1U << (8 * sizeof(unsigned int) - 1))) {
+        if (number->digits && (number->digits[number->digits[0]] < (1U << (8 * sizeof(unsigned int) - 1)))) {
                 number->high_digit = number->digits[number->digits[0]];
                 number->digits[number->digits[0]] = 0;
                 number->digits[0]--;
@@ -191,7 +180,12 @@ void assign_value(Bigint* number, char* value) {
 void normolize(Bigint* number) {
         unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1));
         unsigned int max_number_i = ~sign_mask;
+
+        // Base cases
         if ((number->high_digit & (sign_mask - 1)) != 0) return;
+        if (!number->digits) return;
+
+        // Process array elements
         int i = number->digits[0];
         int cnt = 0;
         while (i > 0 && number->digits[i] == 0) {
@@ -216,19 +210,27 @@ void normolize(Bigint* number) {
 }
 
 unsigned int get_word_print(Bigint* number, unsigned int i) {
-    if (i < number->digits[0])  return number->digits[i + 1u];
-    if (i == number->digits[0]) return (unsigned int)number->high_digit & ABS_MASK_U;
-    return 0u;
+        if (number->digits) {
+                if (i < number->digits[0])  return number->digits[i + 1u];
+                if (i == number->digits[0]) return (unsigned int)number->high_digit & ABS_MASK_U;
+        } else {
+                if (i == 0u) return (unsigned int)number->high_digit & ABS_MASK_U;
+                return 0u;
+        }
 }
 
 void print_number(Bigint* number) {
         unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1)); 
-        if (((unsigned int)number->high_digit & ABS_MASK_U) == 0 && number->digits[0] == 0) {
-                puts("0"); return;
+        if (!number->digits &&
+        ((unsigned int)number->high_digit & ABS_MASK_U) == 0) {
+                puts("0");
+                return;
         }
         if (number->high_digit & sign_mask) putchar('-');
 
-        unsigned int n = number->digits[0] + 1u;
+        unsigned int n = 1u;
+        if (number->digits) n += number->digits[0];
+
         unsigned int *buffer = (unsigned int *)malloc(n * sizeof(unsigned int));
         if (!buffer) { printf("Memory error!\n"); return; }
         for (unsigned int i = 0; i < n; i++) buffer[i] = get_word_print(number, i);
@@ -260,24 +262,24 @@ void number_debug(Bigint* number) {
         if (number == NULL) {
                 printf("Number is not initilized!\n");
                 return;
+        }
+        if (number->high_digit >> (sizeof(int) * 8 - 1)) {
+                printf("-%9.d(",number->high_digit - (1 << (sizeof(int) * 8 - 1)));
+                printBits(number->high_digit);
+                printf(")h ");   
         } else {
-                if (number->high_digit >> (sizeof(int) * 8 - 1)) {
-                        printf("-%9.d(",number->high_digit - (1 << (sizeof(int) * 8 - 1)));
-                        printBits(number->high_digit);
-                        printf(")h ");   
-                } else {
-                        printf("%9.d(",number->high_digit);
-                        printBits(number->high_digit);
-                        printf(")h ");   
-                }
-                if (!(number->digits)) {
-                        printf("None");
-                } else {
-                        for (int i = number->digits[0]; i > 0; i--) {
-                                printf("%10.u(", number->digits[i]);
-                                printBits(number->digits[i]);
-                                printf(") ");
-                        }
+                printf("%9.d(",number->high_digit);
+                printBits(number->high_digit);
+                printf(")h ");   
+        }
+
+        if (!(number->digits)) {
+                printf("None");
+        } else {
+                for (int i = number->digits[0]; i > 0; i--) {
+                        printf("%10.u(", number->digits[i]);
+                        printBits(number->digits[i]);
+                        printf(") ");
                 }
         }
         if (!(number->digits)) {
@@ -293,7 +295,13 @@ void sum_interior(Bigint* number1, Bigint* number2) {
         if (number1 == NULL || number2 == NULL) return;
         unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1));
         unsigned int max_number_i = ~sign_mask;
-        unsigned int min_length = (number1->digits[0] < number2->digits[0]) ? number1->digits[0] : number2->digits[0];
+
+        // Calculating minimum length
+        unsigned int min_length = 0;
+        if (number1->digits && number2->digits) {
+                min_length = (number1->digits[0] < number2->digits[0]) ? number1->digits[0] : number2->digits[0];
+        }
+
         unsigned int carry = 0;
         long long unsigned summary = 0;
 
@@ -301,19 +309,19 @@ void sum_interior(Bigint* number1, Bigint* number2) {
         if ((number1->high_digit & sign_mask) == (number2->high_digit & sign_mask)) {
 
                 // in case of empty array
-                if (number1->digits[0] == 0 && number2->digits[0] == 0) {
-                        int sign = number1->high_digit & sign_mask;
+                if (!number1->digits && !number2->digits) {
+                        unsigned int sign = number1->high_digit & sign_mask;
                         unsigned int abs_high1 = number1->high_digit & max_number_i;
                         unsigned int abs_high2 = number2->high_digit & max_number_i;
+
                         summary = (unsigned long long)abs_high1 + abs_high2 + carry;
                         unsigned int new_high = (unsigned int)summary;
                         carry = summary >> (sizeof(unsigned int) * 8);
                         if (carry != 0) {
-                                unsigned int* temp_ptr = (unsigned int*)realloc(number1->digits, 
-                                (number1->digits[0] + 2) * sizeof(unsigned int));
+                                unsigned int* temp_ptr = (unsigned int*)malloc(2 * sizeof(unsigned int));
                                 if (temp_ptr == NULL) return;
                                 number1->digits = temp_ptr;
-                                number1->digits[0]++;
+                                number1->digits[0] = 1;
                                 number1->digits[number1->digits[0]] = new_high;
                         } else {
                                 number1->high_digit = new_high;
@@ -329,7 +337,7 @@ void sum_interior(Bigint* number1, Bigint* number2) {
                         carry = summary >> (sizeof(unsigned int) * 8);
                 }
                 
-                if (number1->digits[0] > number2->digits[0]) {
+                if (number1->digits && number2->digits && (number1->digits[0] > number2->digits[0])) {
                         int i = min_length + 1;
                         summary = (unsigned int)(number2->high_digit & max_number_i) + number1->digits[i] + carry;
                         number1->digits[i] = (unsigned int)summary;
@@ -341,7 +349,7 @@ void sum_interior(Bigint* number1, Bigint* number2) {
                                 carry = summary >> (sizeof(unsigned int) * 8);
                                 i++;
                         }
-                } else if (number1->digits[0] < number2->digits[0]) {
+                } else if (number1->digits && number2->digits && (number1->digits[0] < number2->digits[0])) {
                         int i = min_length + 1;
                         unsigned int* temp_ptr = (unsigned int*)realloc(number1->digits, (number1->digits[0] +
                          (number2->digits[0] - min_length) + 1) * sizeof(unsigned int));
@@ -370,11 +378,12 @@ void sum_interior(Bigint* number1, Bigint* number2) {
                         unsigned int new_high = (unsigned int)summary;
                         carry = summary >> (sizeof(unsigned int) * 8);
                         if (carry != 0 || (new_high > max_number_i)) {
+                                unsigned int digits_length = (number1->digits) ? number1->digits[0] : 0;
                                 unsigned int* temp_ptr = (unsigned int*)realloc(number1->digits, 
-                                (number1->digits[0] + 2) * sizeof(unsigned int));
+                                (digits_length + 2) * sizeof(unsigned int));
                                 if (temp_ptr == NULL) return;
                                 number1->digits = temp_ptr;
-                                number1->digits[0]++;
+                                number1->digits[0] = digits_length + 1;
                                 number1->digits[number1->digits[0]] = new_high + carry;
                                 number1->high_digit &= sign_mask;
                         } else {
@@ -389,18 +398,21 @@ void sum_interior(Bigint* number1, Bigint* number2) {
                 Bigint* less_number = NULL; 
                 unsigned int abs_high1 = number1->high_digit & max_number_i; 
                 unsigned int abs_high2 = number2->high_digit & max_number_i; 
-                if (number1->digits[0] > number2->digits[0]) { 
+                if (number1->digits && number2->digits && (number1->digits[0] > number2->digits[0])) { 
                         great_number = number1; 
                         less_number = number2; 
-                } else if (number1->digits[0] < number2->digits[0]) { 
+                } else if (number1->digits && number2->digits && (number1->digits[0] < number2->digits[0])) { 
                         great_number = number2; 
-                        less_number = number1; 
+                        less_number = number1;
                 } else if (abs_high1 > abs_high2) { 
                         great_number = number1; 
                         less_number = number2; 
                 } else if (abs_high1 < abs_high2) { 
                         great_number = number2; 
                         less_number = number1; 
+                } else if (!number1->digits && !number2->digits) {
+                        great_number = number1; 
+                        less_number = number2; 
                 } else { 
                         int i = number1->digits[0]; 
                         while ((number1->digits[i] == number2->digits[i]) && i > 0) i--; 
@@ -416,7 +428,7 @@ void sum_interior(Bigint* number1, Bigint* number2) {
                 unsigned int abs_less = less_number->high_digit & max_number_i;
 
                 // in case of empty arrays
-                if (number1->digits[0] == 0 && number2->digits[0] == 0) {
+                if (!number1->digits && !number2->digits) {
                         int high_sign = great_number->high_digit & sign_mask;
                         unsigned int result = abs_great - abs_less - carry;
                         great_number->high_digit = result;
@@ -439,7 +451,7 @@ void sum_interior(Bigint* number1, Bigint* number2) {
                         great_number->digits[i] = (unsigned int)summary;
                 }
 
-                if (great_number->digits[0] > less_number->digits[0]) {
+                if (great_number->digits && less_number->digits && (great_number->digits[0] > less_number->digits[0])) {
                         int i = min_length + 1;
                         if (great_number->digits[i] < abs_less + carry) {
                                 summary = (long long unsigned)(1ULL << BASE) + (long long unsigned)great_number->digits[i] -
@@ -505,15 +517,33 @@ Bigint* sum_external(Bigint* number1, Bigint* number2) {
 }
 
 void sub_interior(Bigint* number1, Bigint* number2) {
+        if (!number1 || !number2) return;
         number2->high_digit = (number2->high_digit & SIGN_MASK_U) ? 
                 number2->high_digit & ABS_MASK_U : number2->high_digit | SIGN_MASK_U;
         sum_interior(number1, number2);
 }
 
 Bigint* sub_external(Bigint* number1, Bigint* number2) {
-        number2->high_digit = (number2->high_digit & SIGN_MASK_U) ? 
-                number2->high_digit & ABS_MASK_U : number2->high_digit | SIGN_MASK_U;
-        sum_external(number1, number2);
+        if (!number1 || !number2) return NULL;
+
+        Bigint* copy = init();
+        if (!copy) return NULL;
+
+        copy->high_digit = number2->high_digit ^ SIGN_MASK_U;
+
+        if (number2->digits) {
+                unsigned int size = number2->digits[0] + 1;
+                copy->digits = malloc(size * sizeof(unsigned int));
+                if (!copy->digits) { free(copy); return NULL; }
+                memcpy(copy->digits, number2->digits, size * sizeof(unsigned int));
+        }
+
+        Bigint* result = sum_external(number1, copy);
+
+        free(copy->digits);
+        free(copy);
+
+        return result;
 }
 
 unsigned int loword(unsigned int value) {
@@ -621,13 +651,92 @@ void mult_internal(Bigint* number1, Bigint* number2) {
         if (number1 == NULL || number2 == NULL) return;
 
         Bigint* result = mult_external(number1, number2);
+        if (!result) return;
+
+        free(number1->digits);
+
         number1->high_digit = result->high_digit;
-        number1->digits = malloc((result->high_digit + 1) * sizeof(unsigned int));
-        memcpy(number1->digits, result->digits, (result->high_digit + 1) * sizeof(unsigned int));
+        if (result->digits) {
+                unsigned int size = result->digits[0] + 1;
+                number1->digits = malloc(size * sizeof(unsigned int));
+                if (!number1->digits) return;
+                memcpy(number1->digits, result->digits, size * sizeof(unsigned int));
+        } else {
+                number1->digits = NULL;
+        }
+
+        free(result->digits);
+        free(result);
+}
+
+void test_init_assign(void) {
+    printf("\nINIT & ASSIGN_VALUE TESTS\n");
+
+    // A: init() returns an object with high_digit == 0 and digits == NULL
+    printf("\nA) init()\n");
+    Bigint* t = init();
+    if (!t) { printf("init() returned NULL\n"); return; }
+    number_debug(t);
+    free(t->digits);
+    free(t);
+
+    // B: assign_value(\"0\") -> prints 0, digits must remain NULL
+    printf("\nB) assign_value(\"0\")\n");
+    t = init();
+    assign_value(t, "0");
+    printf("print_number: ");
+    print_number(t);
+    number_debug(t);
+    free(t->digits);
+    free(t);
+
+    // C: assign_value(\"5\") -> fits into high_digit, no digits array
+    printf("\nC) assign_value(\"5\")\n");
+    t = init();
+    assign_value(t, "5");
+    printf("print_number: ");
+    print_number(t);
+    number_debug(t);
+    free(t->digits);
+    free(t);
+
+    // D: assign_value(\"-5\") -> negative small number
+    printf("\nD) assign_value(\"-5\")\n");
+    t = init();
+    assign_value(t, "-5");
+    printf("print_number: ");
+    print_number(t);
+    number_debug(t);
+    free(t->digits);
+    free(t);
+
+    // E: assign_value(\"4294967296\") -> forces multi-word on 32-bit word sizes
+    //      (2^32) - check that digits != NULL and value prints correctly
+    printf("\nE) assign_value(\"4294967296\")\n");
+    t = init();
+    assign_value(t, "4294967296");
+    printf("print_number: ");
+    print_number(t);
+    number_debug(t);
+    free(t->digits);
+    free(t);
+
+    // F: assign a long positive and a long negative value to ensure stability
+    printf("\nF) assign_value long positive and negative\n");
+    Bigint* a = init(); assign_value(a, "12345678901234567890");
+    Bigint* b = init(); assign_value(b, "-9876543210987654321");
+    printf("A: "); print_number(a); number_debug(a);
+    printf("B: "); print_number(b); number_debug(b);
+    free(a->digits); free(a);
+    free(b->digits); free(b);
+
+    printf("\nINIT & ASSIGN_VALUE TESTS DONE\n");
 }
 
 int main(void) {
         // Tests segment
+
+        test_init_assign();
 
         // 1 - interior sum: 0 + 0
         printf("Test 1\n");
