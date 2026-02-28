@@ -289,9 +289,8 @@ void number_debug(Bigint* number) {
         printf("\n");
 }
 
-Bigint* sum(Bigint* number1, Bigint* number2) {
-        if (number1 == NULL || number2 == NULL) return NULL;
-        // unsigned int max_number_ui = (0U - 1);
+void sum_interior(Bigint* number1, Bigint* number2) {
+        if (number1 == NULL || number2 == NULL) return;
         unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1));
         unsigned int max_number_i = ~sign_mask;
         unsigned int min_length = (number1->digits[0] < number2->digits[0]) ? number1->digits[0] : number2->digits[0];
@@ -312,14 +311,14 @@ Bigint* sum(Bigint* number1, Bigint* number2) {
                         if (carry != 0) {
                                 number1->digits = (unsigned int*)realloc(number1->digits, 
                                 (number1->digits[0] + 2) * sizeof(unsigned int));
-                                if (number1->digits == NULL) return NULL;
+                                if (number1->digits == NULL) return;
                                 number1->digits[0]++;
                                 number1->digits[number1->digits[0]] = new_high;
                         } else {
                                 number1->high_digit = new_high;
                         }
                         if (sign) number1->high_digit |= sign_mask;
-                        return number1;
+                        return;
                 }
 
                 for (int i = 1; i <= min_length; i++) {
@@ -345,7 +344,7 @@ Bigint* sum(Bigint* number1, Bigint* number2) {
                         int i = min_length + 1;
                         number1->digits = (unsigned int*)realloc(number1->digits, (number1->digits[0] +
                          (number2->digits[0] - min_length) + 1) * sizeof(unsigned int));
-                        if (number1->digits == NULL) return NULL;
+                        if (number1->digits == NULL) return;
                         number1->digits[0] += (number2->digits[0] - min_length);
 
                         summary = (unsigned int)(number1->high_digit & max_number_i) + number2->digits[i] + carry;
@@ -371,7 +370,7 @@ Bigint* sum(Bigint* number1, Bigint* number2) {
                         if (carry != 0 || (new_high > max_number_i)) {
                                 number1->digits = (unsigned int*)realloc(number1->digits, 
                                 (number1->digits[0] + 2) * sizeof(unsigned int));
-                                if (number1->digits == NULL) return NULL;
+                                if (number1->digits == NULL) return;
                                 number1->digits[0]++;
                                 number1->digits[number1->digits[0]] = new_high + carry;
                                 number1->high_digit &= sign_mask;
@@ -380,7 +379,7 @@ Bigint* sum(Bigint* number1, Bigint* number2) {
                         }
                         if (sign) number1->high_digit |= sign_mask;
                 }
-                return number1;
+                return;
         } else {
                 // determine greater number out of two
                 Bigint* great_number = NULL; 
@@ -419,7 +418,7 @@ Bigint* sum(Bigint* number1, Bigint* number2) {
                         unsigned int result = abs_great - abs_less - carry;
                         great_number->high_digit = result;
                         if (high_sign) great_number->high_digit |= sign_mask;
-                        return number1;
+                        return;
                 }
 
                 for (int i = 1; i <= min_length; i++) {
@@ -472,208 +471,51 @@ Bigint* sum(Bigint* number1, Bigint* number2) {
                 }
 
                 normolize(great_number);
-                return great_number;
+                return;
         }
 }
 
-// unsigned int loword(int value) {
-//     return value & ((1U << (sizeof(value) << 2)) - 1);
-// }
+Bigint* sum_external(Bigint* number1, Bigint* number2) {
+    if (!number1 || !number2) return NULL;
 
-// unsigned int hiword(int value) {
-//     return value & (~((1U << (sizeof(value) << 2)) - 1));
-// }
+    // Original deep copy
+    Bigint* original = init();
+    original->high_digit = number1->high_digit;
 
-// Bigint* mult(Bigint* number1, Bigint* number2) {
-//         // Input validation
-//         if (number1 == NULL || number2 == NULL) return NULL;
+    original->digits = malloc((number1->high_digit + 1) * sizeof(unsigned int));
+    memcpy(original->digits, number1->digits, (number1->high_digit + 1) * sizeof(unsigned int));
 
-//         // Auxilary variables
-//         unsigned int sign_mask = (1 << ((sizeof(unsigned int) << 3) - 1));
-//         unsigned int value_mask = ~sign_mask;
+    // Summation
+    sum_interior(number1, number2);
 
-//         // Multiplication variables
-//         long long unsigned carry = 0;
-//         unsigned int loword1, loword2, hiword1, hiword2;
-//         long long unsigned interim_value1, interim_value2;
-//         unsigned int product_high, product_cross1, product_cross2, product_low;
-//         long long unsigned sum1;
-//         long long unsigned buffer_carry = 0;
-//         Bigint* result = init();
+    // Result deep copy
+    Bigint* result = init();
+    result->high_digit = number1->high_digit;
 
-//         // Case of one number being equal to zero
-//         if ((!number1->digits && !(number1->high_digit & value_mask)) || 
-//                 (!number2->digits && !(number2->high_digit & value_mask))) {
-//                 result->high_digit = 0;
-//                 return result;
-//         }
+    result->digits = malloc((number1->high_digit + 1) * sizeof(unsigned int));
+    memcpy(result->digits, number1->digits, (number1->high_digit + 1) * sizeof(unsigned int));
 
-//         // Product sign determination
-//         unsigned int sign = 0;
-//         if (((number1->high_digit & sign_mask) > 0) ^ ((number2->high_digit & sign_mask) > 0)) sign = 1;
+    // Original number value restoration
+    free(number1->digits);
+    number1->high_digit = original->high_digit;
+    number1->digits = original->digits;
 
-//         // Calculating maximum length of the product + technical space, lengths separetely
-//         unsigned int result_length = 3;
-//         unsigned int first_length = 0, second_length = 0;
-//         if (number1->digits) {
-//                 result_length += (number1->digits[0] + 1);
-//                 first_length += (number1->digits[0] + 1);
-//         }
-//         if (number2->digits) {
-//                 result_length += (number2->digits[0] + 1);
-//                 second_length += (number2->digits[0] + 1);
-//                 printf("%u %u\n", second_length, number2->digits[0]);
-//         }
+    free(original);
 
-//         // !!! There is a memory leak here. It can be fixed by modifing init function !!! 
-//         // Memory allocation for the product 
-//         unsigned int* temp_ptr = (unsigned int*)calloc(result_length, sizeof(unsigned int));
-//         if (!temp_ptr) return NULL;
-//         result->digits = temp_ptr;
-//         result->digits[0] = result_length - 1;
+    return result;
+}
 
-//         // Long multiplication algorithm
-//         for (int i = 1; i <= first_length; i++) {
-//                 printf("%d / %u\n", i, first_length);
-//                 carry = 0;
+void sub_interior(Bigint* number1, Bigint* number2) {
+        number2->high_digit = (number2->high_digit & SIGN_MASK_U) ? 
+                number2->high_digit & ABS_MASK_U : number2->high_digit | SIGN_MASK_U;
+        sum_interior(number1, number2);
+}
 
-//                 // Split digit of the first number to loword and hiword
-//                 if (i == first_length) {
-//                         printf("Marker!\n");
-//                         loword1 = loword(number1->high_digit);
-//                         hiword1 = (hiword(number1->high_digit & value_mask)) >> (sizeof(unsigned int) << 2);
-//                 } else {
-//                         loword1 = loword(number1->digits[i]);
-//                         hiword1 = (hiword(number1->digits[i])) >> (sizeof(unsigned int) << 2);
-//                 }
-//                 printf("lowordI%d: %u(", i, loword1);
-//                 printBits(loword1);
-//                 printf(")\n");
-//                 printf("hiwordI%d: %u(", i, hiword1);
-//                 printBits(hiword1);
-//                 printf(")\n");
-
-//                 for (int j = 1; j <= second_length; j++) {
-//                         printf("    %d / %u\n", j, second_length);
-//                         // Split digit of the second number to loword and hiword
-//                         if (j == second_length) {
-//                                 loword2 = loword(number2->high_digit);
-//                                 hiword2 = (hiword(number2->high_digit & value_mask)) >> (sizeof(unsigned int) << 2);
-//                         } else {
-//                                 loword2 = loword(number2->digits[j]);
-//                                 hiword2 = (hiword(number2->digits[j])) >> (sizeof(unsigned int) << 2);
-//                         }
-//                         printf("    lowordJ%d: %u(", j, loword2);
-//                         printBits(loword2);
-//                         printf(")\n");
-//                         printf("    hiwordJ%d: %u(", j, hiword2);
-//                         printBits(hiword2);
-//                         printf(")\n");
-
-//                         // Multiplication of the digits' elements
-//                         product_low = loword1 * loword2;
-//                         product_cross1 = loword1 * hiword2;
-//                         product_cross2 = loword2 * hiword1;
-//                         product_high = hiword1 * hiword2;
-
-//                         printf("    Products(crs1, crs2, low, high): %u %u %u %u\n",product_cross1, product_cross2, product_low, product_high);
-
-//                         // Cross-elements summation
-//                         interim_value1 = (long long unsigned)(loword(product_cross1) << (sizeof(unsigned int) << 2)) + 
-//                         (loword(product_cross2) << (sizeof(unsigned int) << 2));
-//                         interim_value2 = 
-//                         (long long unsigned) (hiword(product_cross1) >> (sizeof(unsigned int) << 2)) +
-//                         (hiword(product_cross2) >> (sizeof(unsigned int) << 2));
-
-//                         printf("    Iloword1: %u(", loword(product_cross1));
-//                         printBits(loword(product_cross1));
-//                         printf(")\n");
-//                         printf("    Iloword2: %u(", loword(product_cross2));
-//                         printBits(loword(product_cross2));
-//                         printf(")\n");
-//                         printf("    Ihiword1: %u(", (hiword(product_cross1) >> (sizeof(unsigned int) << 2)));
-//                         printBits((hiword(product_cross1) >> (sizeof(unsigned int) << 2)));
-//                         printf(")\n");
-//                         printf("    Ihiword1: %u(", (hiword(product_cross2) >> (sizeof(unsigned int) << 2)));
-//                         printBits((hiword(product_cross2) >> (sizeof(unsigned int) << 2)));
-//                         printf(")\n");
-
-
-//                         printf("    Interin1, 2: %llu %llu\n", interim_value1, interim_value2);
-//                         printf("    ");
-//                         printBits_long(interim_value1);
-//                         printf("   ");
-//                         printBits_long(interim_value2);
-//                         printf("\n");
-//                         // interim_value1 <<= (sizeof(unsigned int) << 2);
-
-//                         printf("    Carry(prev): %llu\n", carry);
-//                         printf("    Current value: %u\n", result->digits[i + j - 1]);
-//                         // Overflow value determination and current vakue assignment
-//                         sum1 = (long long unsigned)product_low + interim_value1 + carry;
-//                         carry = ((long long unsigned)sum1 + (long long unsigned)result->digits[i + j - 1]) >> 
-//                         (sizeof(unsigned int) << 3);
-//                         carry += (product_high + interim_value2);
-//                         result->digits[i + j - 1] += sum1;
-//                         printf("    Sum: %llu(", sum1);
-//                         printBits_long(sum1);
-//                         printf(")\n");
-//                         printf("    Carry: %llu(", carry);
-//                         printBits_long(carry);
-//                         printf(")\n");
-//                         printf("    Result: %u(", result->digits[i + j - 1]);
-//                         printBits(result->digits[i + j - 1]);
-//                         printf(")\n");
-//                         printf("\n");
-//                         // unsigned long long full =
-//                         //         (unsigned long long)product_low
-//                         //       + interim_value1
-//                         //       + ((unsigned long long)(product_high + interim_value2) << (sizeof(unsigned int) << 3))
-//                         //       + result->digits[i + j - 1]
-//                         //       + carry;
-
-//                         // result->digits[i + j - 1] = (unsigned int)full;
-
-//                         // carry = full >> (sizeof(unsigned int) << 3);
-//                 }
-
-//                 printf("    Remainer: %llu\n", carry);
-//                 // add remainder to the next digit
-//                 unsigned int shift = 0;
-//                 while (carry) {
-//                         buffer_carry = (carry + result->digits[i + second_length + shift]) >> (sizeof(unsigned int) << 3);
-//                         result->digits[i + second_length + shift] += carry;
-//                         carry = buffer_carry;
-//                         printf("    Next_res: %u\n", result->digits[i + second_length + shift]);
-//                         shift++;
-//                 }
-//                 printf("\n");
-//         }
-
-//         normolize(result);
-//         if (result->digits && result->digits[0] > 0 && result->digits[result->digits[0]] <= value_mask) {
-//                 result->high_digit = result->digits[result->digits[0]];
-
-//                 unsigned int new_length = result->digits[0] - 1;
-
-//                 if (new_length == 0) {
-//                         free(result->digits);
-//                         result->digits = NULL;
-//                 } else {
-//                         unsigned int* temp_ptr = 
-//                         (unsigned int*)realloc(result->digits, (new_length + 1) * sizeof(unsigned int));
-//                         if (!temp_ptr) return NULL;
-//                         result->digits = temp_ptr;
-//                 }
-
-//                 result->digits[0] = new_length;
-//         }
-
-//         // Sign assignment
-//         if (sign) result->high_digit |= sign_mask;
-
-//         return result;
-// }
+Bigint* sub_external(Bigint* number1, Bigint* number2) {
+        number2->high_digit = (number2->high_digit & SIGN_MASK_U) ? 
+                number2->high_digit & ABS_MASK_U : number2->high_digit | SIGN_MASK_U;
+        sum_external(number1, number2);
+}
 
 unsigned int loword(unsigned int value) {
     return value & ((1 << (sizeof(unsigned int) << 2)) - 1);
@@ -696,95 +538,83 @@ unsigned int get_word(Bigint* number, unsigned int index) {
 }
 
 Bigint* mult(Bigint* number1, Bigint* number2) {
-        if (number1 == NULL || number2 == NULL) return NULL;
+    if (number1 == NULL || number2 == NULL) return NULL;
 
-        // Calculate numbers' lengths
-        unsigned int length1 = number1->digits ? (number1->digits[0] + 1u) : 1u;
-        unsigned int length2 = number2->digits ? (number2->digits[0] + 1u) : 1u;
+    // Calculating lengths
+    unsigned int length1 = number1->digits ? (number1->digits[0] + 1u) : 1u;
+    unsigned int length2 = number2->digits ? (number2->digits[0] + 1u) : 1u;
 
+    Bigint* result = init();
+    if (!result) return NULL;
 
-        Bigint* result = init();
-        if (!result) return NULL;
-
-        // Case of one number being equal to zero
-        if ((!number1->digits && !(number1->high_digit & ABS_MASK_U)) || 
-                (!number2->digits && !(number2->high_digit & ABS_MASK_U))) {
-                result->high_digit = 0;
-                free(result->digits);
-                result->digits = NULL;
-                return result;
-        }
-
-        // Sign determination
-        unsigned int sign = ((number1->high_digit & SIGN_MASK_U) ^ (number2->high_digit & SIGN_MASK_U)) ? 1u : 0u;
-
-        unsigned int res_words = length1 + length2;
-        unsigned int *res = (unsigned int*)calloc(res_words, sizeof(unsigned int));
-        if (!res) { free(result); return NULL; }
-
-        // long multiplication
-        for (unsigned int i = 0; i < length1; ++i) {
-                uint64_t carry = 0;
-                unsigned int a = get_word(number1, i);
-                unsigned int a_loword = loword(a);
-                unsigned int a_hiword = hiword(a);
-                for (unsigned int j = 0; j < length2; ++j) {
-                        unsigned int b = get_word(number2, j);
-                        unsigned int b_loword = loword(b);
-                        unsigned int b_hiword = hiword(b);
-
-                        // mulriplying parts
-                        uint64_t product0 = (uint64_t)a_loword * b_loword; // low*low
-                        uint64_t product1 = (uint64_t)a_loword * b_hiword; // low*hi
-                        uint64_t product2 = (uint64_t)a_hiword * b_loword; // hi*low
-                        uint64_t product3 = (uint64_t)a_hiword * b_hiword; // hi*hi
-
-                        // Split middle products in two parts
-                        uint64_t middle = product1 + product2;
-                        uint64_t low32 = (product0 & (0u - 1)) 
-                        + ((middle & ((1 << (sizeof(unsigned int) << 2)) - 1)) << (sizeof(unsigned int) << 2));
-                        uint64_t high32 = (product0 >> (sizeof(unsigned int) << 3)) 
-                        + (middle >> (sizeof(unsigned int) << 2)) + product3;
-
-                        // Sum and overflow calculation
-                        uint64_t sum_low = (uint64_t)res[i + j] + (low32 & (0u - 1)) + carry;
-                        res[i + j] = (unsigned int)sum_low;
-                        carry = high32 + (sum_low >> (sizeof(unsigned int) << 3));
-                }
-
-                // Propagate remaining carry into subsequent result words
-                unsigned int index = i + length2;
-                while (carry) {
-                        uint64_t summary = (uint64_t)res[index] + carry;
-                        res[index] = (unsigned int)summary;
-                        carry = summary >> 32;
-                        index++;
-                }
-        }
-
-        // Trim leading zeros
-        int top = (int)res_words - 1;
-        while (top > 0 && res[top] == 0u) top--;
-
-        // Single digit result
-        if (top == 0 && (result->digits[result->digits[0]] <= ~(1 << ((sizeof(unsigned int) << 3) - 1)))) {
-                result->high_digit = (int)res[0];
-                free(result->digits);
-                result->digits = NULL;
-        // Multiple digits result
-        } else {
-                unsigned int lower_count = (unsigned int)top;
-                unsigned int *temp = (unsigned int*)realloc(result->digits, (lower_count + 1u) * sizeof(unsigned int));
-                if (!temp) { free(res); free(result); return NULL; }
-                result->digits = temp;
-                result->digits[0] = lower_count;
-                for (unsigned int k = 0; k < lower_count; ++k) result->digits[k + 1u] = res[k];
-                result->high_digit = (int)res[lower_count];
-        }
-        free(res);
-
-        if (sign) result->high_digit |= SIGN_MASK_U;
+    // Case of one number being equal to zero
+    if ((!number1->digits && !(number1->high_digit & ABS_MASK_U)) ||
+        (!number2->digits && !(number2->high_digit & ABS_MASK_U))) {
+        result->high_digit = 0;
+        free(result->digits);
+        result->digits = NULL;
         return result;
+    }
+
+    // Sign determination
+    unsigned int sign = ((number1->high_digit & SIGN_MASK_U) ^ (number2->high_digit & SIGN_MASK_U)) ? 1u : 0u;
+
+    unsigned int res_words = length1 + length2;
+    unsigned int *res = (unsigned int*)calloc(res_words, sizeof(unsigned int));
+    if (!res) { free(result); return NULL; }
+
+    unsigned int HALF_BITS = (unsigned int)(sizeof(unsigned int) << 2);
+    unsigned int WORD_BITS = (unsigned int)(sizeof(unsigned int) << 3);
+
+    // Long multiplication
+    for (unsigned int i = 0; i < length1; ++i) {
+        for (unsigned int j = 0; j < length2; ++j) {
+            unsigned int a = get_word(number1, i);
+            unsigned int b = get_word(number2, j);
+
+            // Calculating products
+            uint64_t product1 = (uint64_t)loword(a) * (uint64_t)loword(b); // low * low
+            uint64_t product2 = (uint64_t)loword(a) * (uint64_t)hiword(b); // low * hi
+            uint64_t product3 = (uint64_t)hiword(a) * (uint64_t)loword(b); // hi  * low
+            uint64_t product4 = (uint64_t)hiword(a) * (uint64_t)hiword(b); // hi  * hi
+
+            // Calculating split
+            uint64_t middle = product2 + product3;
+            uint64_t buffer = (product4 << (HALF_BITS * 2)) + (middle << HALF_BITS) + product1;
+
+            // Result distribution between current digit and buffer for next digit
+            unsigned int k = i + j;
+            while (buffer && k < res_words) {
+                uint64_t sum = (uint64_t)res[k] + (buffer & (uint64_t)~0u);
+                res[k] = (unsigned int)sum;
+                buffer = (buffer >> WORD_BITS) + (sum >> WORD_BITS);
+                k++;
+            }
+        }
+    }
+
+    // Trim leading zeros
+    int top = (int)res_words - 1;
+    while (top > 0 && res[top] == 0u) top--;
+
+    // Single digit result
+    if (top == 0 && (res[0] <= (unsigned int)ABS_MASK_U)) {
+        result->high_digit = (int)res[0];
+        free(result->digits);
+        result->digits = NULL;
+    } else {
+        unsigned int lower_count = (unsigned int)top;
+        unsigned int *temp = (unsigned int*)realloc(result->digits, (lower_count + 1u) * sizeof(unsigned int));
+        if (!temp) { free(res); free(result); return NULL; }
+        result->digits = temp;
+        result->digits[0] = lower_count;
+        for (unsigned int kk = 0; kk < lower_count; ++kk) result->digits[kk + 1u] = res[kk];
+        result->high_digit = (int)res[lower_count];
+    }
+    free(res);
+
+    if (sign) result->high_digit |= SIGN_MASK_U;
+    return result;
 }
 
 int main(void) {
@@ -815,19 +645,27 @@ int main(void) {
         // Bigint* number3 = sum(number1, number2);
         // number_debug(number3);
 
-        char* a = "142356498934629";
+        // char* a = "142356498934629";
+        char* a = "97345897893450224385723751231272112000";
         // char* a = "952303585822";
         Bigint* number1 = init();
         assign_value(number1, a);
         number_debug(number1);
 
-        char* b = "263390253433";
+        // char* b = "263390253433";
+        // char* b = "21294579897845434784556789046789522267299";
+        char* b = 0;
         // char* b = "34895023095383";
         Bigint* number2 = init();
         assign_value(number2, b);
         number_debug(number2);
 
         printf("\n\n");
+
+        // sub_interior(number1, number2);
+        // Bigint* result = sum_external(number1, number2);
+        // number_debug(number1);
+        // number_debug(result);
 
         Bigint* result = mult(number1, number2);
         number_debug(result);
