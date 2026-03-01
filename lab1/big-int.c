@@ -763,8 +763,56 @@ void diserealize(Bigint* number) {
     }
 }
 
-Bigint* Karatsuba_external (Bigint* number1, Bigint* number2) {
+void shift_words(Bigint* number, unsigned int n) {
+    /* Shift number for n digits placing 0 on arosed positions */
+    if (!number || n == 0) return;
+
+    unsigned int length = number->digits ? number->digits[0] : 0;
+
+    unsigned int* temp = realloc(number->digits, (length + n + 1) * sizeof(unsigned int));
+    if (!temp) return;
+    number->digits = temp;
+
+    for (int i = length; i >= 1; --i) {
+        number->digits[i + n] = number->digits[i];
+    }
+
+    for (unsigned int i = 1; i <= n; ++i) {
+        number->digits[i] = 0;
+    }
+
+    number->digits[0] = length + n;
+}
+
+Bigint* clone_bigint(Bigint* src) {
+    /* Clone of bigint */
+    if (!src) return NULL;
+
+    Bigint* dst = init();
+    if (!dst) return NULL;
+    dst->high_digit = src->high_digit;
+
+    if (src->digits) {
+        unsigned int size = src->digits[0] + 1;
+        dst->digits = malloc(size * sizeof(unsigned int));
+        if (!dst->digits) { free(dst); return NULL; }
+        memcpy(dst->digits, src->digits, size * sizeof(unsigned int));
+    } else {
+        dst->digits = NULL;
+    }
+
+    return dst;
+}
+
+Bigint* Karatsuba_external(Bigint* number1, Bigint* number2) {
     if (number1  == NULL || number2 == NULL) return NULL;
+
+    // Auto-zero if there is zero
+    if ((!number1->digits && !(number1->high_digit & ABS_MASK_U)) 
+        || (!number2->digits && !(number2->high_digit & ABS_MASK_U))) {
+        Bigint* result = init();
+        return result;
+    }
 
     // Sign determination
     unsigned int sign = ((number1->high_digit & SIGN_MASK_U) ^ (number2->high_digit & SIGN_MASK_U)) ? 1u : 0u;
@@ -777,7 +825,8 @@ Bigint* Karatsuba_external (Bigint* number1, Bigint* number2) {
             length1 += 1;
         }
     } else {
-        length1 = 1;
+        if (number1->high_digit & ABS_MASK_U) length1 = 1;
+        else length1 = 0;
     }
     // Second number length
     if (number2->digits) {
@@ -786,7 +835,8 @@ Bigint* Karatsuba_external (Bigint* number1, Bigint* number2) {
             length2 += 1;
         }
     } else {
-        length2 = 1;
+        if (number2->high_digit & ABS_MASK_U) length2 = 1; 
+        else length2 = 0;
     }
     // Max length determination
     max_length = (length1 <= length2) ? length2 : length1;
@@ -794,70 +844,62 @@ Bigint* Karatsuba_external (Bigint* number1, Bigint* number2) {
     // Base case
     if (max_length == 1) return mult_external(number1, number2);
 
-    // Numbers diserealization
-    if ((length1 % 2) == 1) length1++;
-    if ((length2 % 2) == 1) length2++;
-    diserealize(number1);
-    diserealize(number2);
+    // Make length even for uniform splitting
+    if ((max_length % 2) != 0) max_length++;
+    unsigned int half = max_length / 2;
 
     // Halve numbers
     // Number1 procession
-    unsigned int half1 = length1 / 2;
-    
-    // Allocate memory for number1
     Bigint* number1_l = init();
     Bigint* number1_r = init();
     if (!number1_l || !number1_r) {
-        free(number1_l); free(number1_r);
+        destroy(number1_l); destroy(number1_r);
         return NULL;
     }
 
-    number1_l->digits = (unsigned int*)malloc((half1 + 1) * sizeof(unsigned int));
-    number1_r->digits = (unsigned int*)malloc((half1 + 1) * sizeof(unsigned int));
+    number1_l->digits = (unsigned int*)calloc(half + 1, sizeof(unsigned int));
+    number1_r->digits = (unsigned int*)calloc(half + 1, sizeof(unsigned int));
     if (!number1_l->digits || !number1_r->digits) {
-        free(number1_l->digits); free(number1_r->digits);
-        free(number1_l); free(number1_r);
+        destroy(number1_l); destroy(number1_r);
         return NULL;
     }
-    number1_l->digits[0] = half1;
-    number1_r->digits[0] = half1;
+    number1_l->digits[0] = half;
+    number1_r->digits[0] = half;
 
     // Transfere elements
-    for (unsigned int i = 1; i <= half1; i++) {
-        number1_l->digits[i] = number1->digits[i + half1];
-        number1_r->digits[i] = number1->digits[i];
+    for (unsigned int i = 1; i <= half; i++) {
+        number1_r->digits[i] = get_word(number1, i - 1);
+        number1_l->digits[i] = get_word(number1, i + half - 1);
     }
+    normalize(number1_l);
+    normalize(number1_r);
 
     // Number2 procession
-    unsigned int half2 = length2 / 2;
-    
-    // Allocate memory for number2
     Bigint* number2_l = init();
     Bigint* number2_r = init();
     if (!number2_l || !number2_r) {
-        free(number1_l->digits); free(number2_r->digits);
-        free(number1_l); free(number2_r);
-        free(number2_l); free(number2_r);
+        destroy(number1_l); destroy(number1_r);
+        destroy(number2_l); destroy(number2_r);
         return NULL;
     }
 
-    number2_l->digits = (unsigned int*)malloc((half2 + 1) * sizeof(unsigned int));
-    number2_r->digits = (unsigned int*)malloc((half2 + 1) * sizeof(unsigned int));
-    if (!number1_l->digits || !number2_r->digits) {
-        free(number1_l->digits); free(number2_r->digits);
-        free(number1_l); free(number2_r);
-        free(number2_l->digits); free(number2_r->digits);
-        free(number2_l); free(number2_r);
+    number2_l->digits = (unsigned int*)calloc(half + 1, sizeof(unsigned int));
+    number2_r->digits = (unsigned int*)calloc(half + 1, sizeof(unsigned int));
+    if (!number2_l->digits || !number2_r->digits) {
+        destroy(number1_l); destroy(number1_r);
+        destroy(number2_l); destroy(number2_r);
         return NULL;
     }
-    number2_l->digits[0] = half2;
-    number2_r->digits[0] = half2;
+    number2_l->digits[0] = half;
+    number2_r->digits[0] = half;
 
     // Transfere elements
-    for (unsigned int i = 1; i <= half2; i++) {
-        number2_l->digits[i] = number2->digits[i + half2];
-        number2_r->digits[i] = number2->digits[i];
+    for (unsigned int i = 1; i <= half; i++) {
+        number2_r->digits[i] = get_word(number2, i - 1);
+        number2_l->digits[i] = get_word(number2, i + half - 1);
     }
+    normalize(number2_l);
+    normalize(number2_r);
 
     // Recursivly compute products and sums
     Bigint* prob1 = Karatsuba_external(number1_l, number2_l);
@@ -872,28 +914,59 @@ Bigint* Karatsuba_external (Bigint* number1, Bigint* number2) {
     Bigint* prob3 = Karatsuba_external(sum1, sum2);
     destroy(sum1); destroy(sum2);
 
-    Bigint* power_n = init(); assign_value(power_n, "1");
-    Bigint* base = init();
-    base->high_digit = 1u;
-    base->digits = (unsigned int*)calloc(2, sizeof(unsigned int));
-    base->digits[0] = 1;
-
-    mult_internal(power_n, base);
-    Bigint* power_half_n = init(); assign_value(power_half_n, "1");
-    mult_internal(power_half_n, base);
-    destroy(base);
-
-    for(unsigned int i = 2; i < max_length; i++) {
-        mult_internal(power_half_n, power_n);
-    }
-    mult_internal(power_n, power_half_n);
-
     // Final calculation
-    mult_internal(prob1, power_n); destroy(power_n);
-    mult_internal(prob2, power_half_n); destroy(power_half_n);
+    if (!prob1 || !prob2 || !prob3) {
+        destroy(prob1); destroy(prob2); destroy(prob3); return NULL;
+    }
+
+    Bigint* temp = clone_bigint(prob1);
+    if (!temp) { destroy(prob1); destroy(prob2); destroy(prob3); return NULL; }
+    sub_interior(prob3, temp);
+    destroy(temp);
+
+    temp = clone_bigint(prob2);
+    if (!temp) { destroy(prob1); destroy(prob2); destroy(prob3); return NULL; }
+    sub_interior(prob3, temp);
+    destroy(temp);
+
+    // Bit-shifting multiplication
+    if (prob1->digits || (prob1->high_digit & ABS_MASK_U)) {
+        shift_words(prob1, max_length);
+    }
+    if (prob3->digits || (prob3->high_digit & ABS_MASK_U)) {
+        shift_words(prob3, half);
+    }
+
+    // Summation
     sum_interior(prob1, prob2); destroy(prob2);
     sum_interior(prob1, prob3); destroy(prob3);
+
+    normalize(prob1);
+    if (prob1->digits == NULL && ((prob1->high_digit & ABS_MASK_U) == 0u)) {
+        prob1->high_digit &= ABS_MASK_U;
+    } else if (sign) {
+        prob1->high_digit |= SIGN_MASK_U;
+    } else {
+        prob1->high_digit &= ABS_MASK_U;
+    }
+
     return prob1;
+}
+
+void Karatsuba_interior(Bigint* number1, Bigint* number2) {
+    /* Interior Karatsuba function that use external version to calculate value */
+    if (number1 == NULL || number2 == NULL) return;
+
+    Bigint* result = Karatsuba_external(number1, number2);
+    if (!result) return;
+
+    if (number1->digits) free(number1->digits);
+
+    number1->high_digit = result->high_digit;
+    number1->digits = result->digits;
+
+    result->digits = NULL; 
+    destroy(result);
 }
 
 void test_init_assign(void) {
@@ -1052,19 +1125,88 @@ void test_arithmetics(void) {
     printf("\nSUMMATION, SUBSTRUCTION & MULTIPLICATION TESTS DONE\n");
 }
 
+void test_karatsuba(void) {
+    printf("\nKARATSUBA TESTS\n");
+
+    printf("\nTest 1\n"); {
+        Bigint* a = init(); assign_value(a, "0");
+        Bigint* b = init(); assign_value(b, "0");
+        Bigint* r = Karatsuba_external(a, b);
+        printf("0\n");
+        print_number(r);
+    }
+
+    printf("\nTest 2\n"); {
+        Bigint* a = init(); assign_value(a, "0");
+        Bigint* b = init(); assign_value(b, "9512075892352375938395204");
+        Bigint* r = Karatsuba_external(a, b);
+        printf("0\n");
+        print_number(r);
+    }
+
+    printf("\nTest 3\n"); {
+        Bigint* a = init(); assign_value(a, "7443");
+        Bigint* b = init(); assign_value(b, "95120");
+        Bigint* r = Karatsuba_external(a, b);
+        printf("707978160\n");
+        print_number(r);
+    }
+
+    printf("\nTest 4\n"); {
+        Bigint* a = init(); assign_value(a, "744353434");
+        Bigint* b = init(); assign_value(b, "95120");
+        Bigint* r = Karatsuba_external(a, b);
+        printf("70802898642080\n");
+        print_number(r);
+    }
+
+    printf("\nTest 5\n"); {
+        Bigint* a = init(); assign_value(a, "744309584305832935");
+        Bigint* b = init(); assign_value(b, "9512075892352375938395204");
+        Bigint* r = Karatsuba_external(a, b);
+        printf("7079929253322331804219415104297920429243740\n");
+        print_number(r);
+    }
+
+    printf("\nTest 6\n"); {
+        Bigint* a = init(); assign_value(a, "-744309584305832935");
+        Bigint* b = init(); assign_value(b, "9512075892352375938395204");
+        Bigint* r = Karatsuba_external(a, b);
+        printf("-7079929253322331804219415104297920429243740\n");
+        print_number(r);
+    }
+
+    printf("\nTest 7\n"); {
+        Bigint* a = init(); assign_value(a, "-744309584305832935");
+        Bigint* b = init(); assign_value(b, "-9512075892352375938395204");
+        Bigint* r = Karatsuba_external(a, b);
+        printf("7079929253322331804219415104297920429243740\n");
+        print_number(r);
+    }
+
+    printf("\nTest 8\n"); {
+        Bigint* a = init(); assign_value(a, "546732983845545");
+        Bigint* b = init(); assign_value(b, "0");
+        Karatsuba_interior(a, b);
+        printf("0\n");
+        print_number(a);
+    }
+
+    printf("\nTest 9\n"); {
+        Bigint* a = init(); assign_value(a, "546732983845545");
+        Bigint* b = init(); assign_value(b, "-744309584305832935");
+        Karatsuba_interior(a, b);
+        printf("-406938599932365272314070614024575\n");
+        print_number(a);
+    }
+
+    printf("\nKARATSUBA TESTS DONE\n");
+}
+
 int main(void) {
     // test_init_assign();
     // test_arithmetics();
-
-    Bigint* a = init(); assign_value(a,"744309584305832935");
-    Bigint* b = init(); assign_value(b,"9512075892352373954554345204");
-    Bigint* result1 = Karatsuba_external(a, b);
-    print_number(result1);
-
-    Bigint* c = init(); assign_value(a,"744309584305832935");
-    Bigint* d = init(); assign_value(b,"9512075892352373954554345204");
-    Bigint* result2 = mult_external(a, b);
-    print_number(result2);
+    // test_karatsuba();
 
     return SUCCESS;
 }
