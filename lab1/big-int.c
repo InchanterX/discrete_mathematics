@@ -235,6 +235,8 @@ unsigned int get_word_print(Bigint* number, unsigned int i) {
 }
 
 void print_number(Bigint* number) {
+    if (number == NULL) { printf("NULL\n"); return; }
+
     unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1));
 
     if (!number->digits &&
@@ -969,6 +971,29 @@ void Karatsuba_interior(Bigint* number1, Bigint* number2) {
     destroy(result);
 }
 
+Bigint* uint_to_bigint(unsigned int number) {
+    /* Convert unsigned int number to bigint */
+    Bigint* result = init();
+    if (result->high_digit <= ABS_MASK_U) result->high_digit = number; return result;
+
+    unsigned int* temp_ptr = (unsigned int*)calloc(2, sizeof(unsigned int));
+    if (!temp_ptr) destroy(result); return NULL;
+    result->digits = temp_ptr;
+    result->digits[0] = 1;
+    result->digits[1] = number;
+}
+
+Bigint* first_function(unsigned int n) {
+    /* Recieve natural number and calculate sum from 1 to n of (-1)^n * n! */
+    if (n == 0) return NULL;
+    Bigint* factorial = init();
+    if (n % 2 == 0) return factorial;
+    assign_value(factorial, "1");
+    // Karatsuba cause troubles!
+    for (unsigned int i = 2; i <= n; i++) mult_internal(factorial, uint_to_bigint(i));
+    return factorial;
+}
+
 void test_init_assign(void) {
     printf("\nINIT & ASSIGN_VALUE TESTS\n");
 
@@ -1203,10 +1228,41 @@ void test_karatsuba(void) {
     printf("\nKARATSUBA TESTS DONE\n");
 }
 
+void test_functions(void) {
+    printf("\nMATH FUNCTIONS TESTS\n");
+
+    printf("\nTest 1\n"); {
+        Bigint* r = first_function(0);
+        printf("NULL\n");
+        print_number(r);
+    }
+
+    printf("\nTest 2\n"); {
+        Bigint* r = first_function(6);
+        printf("0\n");
+        print_number(r);
+    }
+
+    printf("\nTest 3\n"); {
+        Bigint* r = first_function(7);
+        printf("5040\n");
+        print_number(r);
+    }
+
+    printf("\nTest 4\n"); {
+        Bigint* r = first_function(27);
+        printf("10888869450418352160768000000\n");
+        print_number(r);
+    }
+
+    printf("\nMATH FUNCTIONS TESTS DONE\n");
+}
+
 int main(void) {
     // test_init_assign();
     // test_arithmetics();
     // test_karatsuba();
+    test_functions();
 
     return SUCCESS;
 }
