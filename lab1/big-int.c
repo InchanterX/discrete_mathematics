@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define SUCCESS 0
-#define BASE (sizeof(int) * 8)
+#define BASE (unsigned int)(sizeof(unsigned int) * 8)
 #define BASE_BITS (8u * (unsigned)sizeof(unsigned int))
 #define BASE_ULL (1ULL << BASE_BITS)
 #define DIGIT_MASK ((unsigned long long)UINT_MAX)
@@ -370,7 +370,8 @@ void sum_interior(Bigint* number1, Bigint* number2) {
                 } else {
                     unsigned int* temp_ptr = realloc(number1->digits, (len1 + 2) * sizeof(unsigned int));
                     if (!temp_ptr) return;
-                    number1->digits = temp_ptr; number1->digits[0] = len1 + 2;
+                    number1->digits = temp_ptr;
+                    number1->digits[0] = len1 + 1;
                     number1->digits[number1->digits[0]] = (unsigned int)tmp;
                     number1->high_digit = (unsigned int)(tmp >> BASE_BITS) | sign;
                 }
@@ -465,7 +466,7 @@ void sum_interior(Bigint* number1, Bigint* number2) {
 
         // Subtraction of parts with the same length
         for (unsigned int i = 1; i <= min_length; i++) {
-            if (great_number->digits[i] < less_number->digits[i] + carry) {
+            if ((unsigned long long)great_number->digits[i] < (unsigned long long)less_number->digits[i] + carry) {
                 summary = (1ULL << BASE)
                 + (long long unsigned)great_number->digits[i]
                 - (long long unsigned)less_number->digits[i] - carry;
@@ -481,7 +482,7 @@ void sum_interior(Bigint* number1, Bigint* number2) {
         // If greater number is longer the lesser
         if (glen > llen) {
             unsigned int i = min_length + 1;
-            if (great_number->digits[i] < abs_less + carry) {
+            if ((unsigned long long)great_number->digits[i] < (unsigned long long)abs_less + carry) {
                 summary = (1ULL << BASE) + (long long unsigned)great_number->digits[i]
                 - (long long unsigned)abs_less - carry;
                 carry = 1;
@@ -516,14 +517,31 @@ void sum_interior(Bigint* number1, Bigint* number2) {
         }
         normalize(great_number);
 
-        if (great_number == number2) {
-            int tmp_h = number1->high_digit;
-            number1->high_digit = number2->high_digit;
-            number2->high_digit = tmp_h;
+        if (great_number == number2)
+        {
+            if (number1->digits)
+            {
+                free(number1->digits);
+                number1->digits = NULL;
+            }
 
-            unsigned int* tmp_d = number1->digits;
-            number1->digits = number2->digits;
-            number2->digits = tmp_d;
+            number1->high_digit = number2->high_digit;
+
+            if (number2->digits)
+            {
+                unsigned int size = number2->digits[0] + 1;
+                number1->digits = (unsigned int *)malloc(size * sizeof(unsigned int));
+                if (number1->digits == NULL)
+                {
+                    number1->high_digit = 0;
+                    return;
+                }
+                memcpy(number1->digits, number2->digits, size * sizeof(unsigned int));
+            }
+            else
+            {
+                number1->digits = NULL;
+            }
         }
     }
 }
@@ -581,7 +599,7 @@ Bigint* sub_external(Bigint* number1, Bigint* number2) {
         memcpy(copy->digits, number2->digits, size * sizeof(unsigned int));
     }
 
-    Bigint* result = sub_external(number1, copy);
+    Bigint* result = sum_external(number1, copy);
     free(copy->digits);
     free(copy);
     return result;
@@ -591,6 +609,7 @@ unsigned int loword(unsigned int number){
         /* Calculate low word of the number */
         return number & ((1 << (sizeof(unsigned int) << 2)) - 1);
 }
+
 unsigned int hiword(unsigned int number){
         /* Calculate high word of the number */
         return number >> (sizeof(unsigned int) << 2);
@@ -626,7 +645,8 @@ Bigint* mult_external(Bigint* number1, Bigint* number2) {
 
     unsigned int sign = ((number1->high_digit & SIGN_MASK_U) ^ (number2->high_digit & SIGN_MASK_U)) ? 1u : 0u;
 
-    unsigned int res_words = length1 + length2;
+    /* Allocate extra room for carries: length1 + length2 + 2 to be safe during propagation */
+    unsigned int res_words = length1 + length2 + 2;
     uint64_t *res = (uint64_t*)calloc(res_words, sizeof(uint64_t));
     if (!res) {
         free(result);
@@ -650,17 +670,16 @@ Bigint* mult_external(Bigint* number1, Bigint* number2) {
             uint64_t hiword_product = product4 + (middle >> HALF_BITS) + (loword_product >> WORD_BITS);
             loword_product &= (uint64_t)UINT_MAX;
 
-
             unsigned int k = i + j;
             res[k] += loword_product;
 
-            if (k + 1 < res_words) {
-                res[k + 1] += (res[k] >> WORD_BITS) + hiword_product;
-                res[k] &= (uint64_t)UINT_MAX;
-            }
+            /* safe: res_words was enlarged, so k+1 is within bounds */
+            res[k + 1] += (res[k] >> WORD_BITS) + hiword_product;
+            res[k] &= (uint64_t)UINT_MAX;
 
             unsigned int kn = k + 1;
-            while (kn < res_words - 1 && res[kn] > (uint64_t)UINT_MAX) {
+            /* propagate while we can write to kn+1 (kn + 1 < res_words) */
+            while (kn + 1 < res_words && res[kn] > (uint64_t)UINT_MAX) {
                 res[kn + 1] += res[kn] >> WORD_BITS;
                 res[kn] &= (uint64_t)UINT_MAX;
                 kn++;
@@ -673,23 +692,28 @@ Bigint* mult_external(Bigint* number1, Bigint* number2) {
     while (top > 0 && res[top] == 0u) top--;
 
     // Single digit result
-    if (top == 0 && (res[0] <= (uint64_t)ABS_MASK_U)) {
+    if (top == 0 && (res[0] < (uint64_t)ABS_MASK_U)) {
         result->high_digit = (int)res[0];
         result->digits = NULL;
 
     // Multiple digits result
     } else {
         unsigned int lower_count = (unsigned int)top;
-        unsigned int *temp = realloc(result->digits, (lower_count + 1u) * sizeof(unsigned int));
-        if (!temp) {
-                free(res);
-                free(result);
-                return NULL;
+        if (res[lower_count] > (uint64_t)ABS_MASK_U) {
+            unsigned int *temp = realloc(result->digits, (lower_count + 2u) * sizeof(unsigned int));
+            if (!temp) { free(res); free(result); return NULL; }
+            result->digits = temp;
+            result->digits[0] = lower_count + 1u;
+            for (unsigned int p = 0; p <= lower_count; ++p) result->digits[p + 1u] = (unsigned int)res[p];
+            result->high_digit = 0;
+        } else {
+            unsigned int *temp = realloc(result->digits, (lower_count + 1u) * sizeof(unsigned int));
+            if (!temp) { free(res); free(result); return NULL; }
+            result->digits = temp;
+            result->digits[0] = lower_count;
+            for (unsigned int p = 0; p < lower_count; ++p) result->digits[p + 1u] = (unsigned int)res[p];
+            result->high_digit = (int)res[lower_count];
         }
-        result->digits = temp;
-        result->digits[0] = lower_count;
-        for (unsigned int p = 0; p < lower_count; ++p) result->digits[p + 1u] = res[p];
-        result->high_digit = (int)res[lower_count];
     }
     free(res);
 
@@ -974,24 +998,100 @@ void Karatsuba_interior(Bigint* number1, Bigint* number2) {
 Bigint* uint_to_bigint(unsigned int number) {
     /* Convert unsigned int number to bigint */
     Bigint* result = init();
-    if (result->high_digit <= ABS_MASK_U) result->high_digit = number; return result;
-
+    if (!result) return NULL;
+    
+    if (number <= ABS_MASK_U) {
+        result->high_digit = number;
+        return result;
+    }
+    
     unsigned int* temp_ptr = (unsigned int*)calloc(2, sizeof(unsigned int));
-    if (!temp_ptr) destroy(result); return NULL;
+    if (!temp_ptr) { destroy(result); return NULL; }
     result->digits = temp_ptr;
     result->digits[0] = 1;
     result->digits[1] = number;
+    return result;
 }
 
-Bigint* first_function(unsigned int n) {
+Bigint* first_function(unsigned int n, Bigint* (*mult)(Bigint*, Bigint*)) {
     /* Recieve natural number and calculate sum from 1 to n of (-1)^n * n! */
     if (n == 0) return NULL;
     Bigint* factorial = init();
     if (n % 2 == 0) return factorial;
     assign_value(factorial, "1");
-    // Karatsuba cause troubles!
-    for (unsigned int i = 2; i <= n; i++) mult_internal(factorial, uint_to_bigint(i));
+    for (unsigned int i = 2; i <= n; i++) {
+        Bigint* current_number = uint_to_bigint(i);
+        Bigint* temp_result = mult(factorial, current_number);
+        if (!temp_result) { destroy(factorial); destroy(temp_result); destroy(current_number); return NULL; }
+        factorial = temp_result;
+        destroy(current_number);
+    }
+
     return factorial;
+}
+
+int mask_bigint(Bigint* number, unsigned int n) {
+    if (!number) return 1;
+
+    unsigned int digits_shift = n / BASE;
+    unsigned int remainder_digit = n % BASE;
+    unsigned int high_value = number->high_digit & ABS_MASK_U; 
+    unsigned int number_length
+    = ((number->digits == NULL) ? 1 : number->digits[0] + (high_value != 0));
+    unsigned int remainder_mask = (remainder_digit == 0) ? 0 : ((1u << remainder_digit) - 1);
+
+    if (digits_shift >= number_length) return 0;
+    
+    if (number->digits == NULL) { 
+        number->high_digit = high_value & remainder_mask; 
+        return 0; 
+    }
+    
+    if (number->digits[0] == digits_shift) {
+        number->high_digit = high_value & remainder_mask;
+        return 0;
+    }
+    
+    number->digits[0] = digits_shift;
+    number->high_digit = number->digits[digits_shift + 1] & remainder_mask;
+    
+    unsigned int* temp_ptr = (unsigned int*)realloc(number->digits, sizeof(unsigned int) * (digits_shift + 1));
+    if (!temp_ptr) return 1;
+    number->digits = temp_ptr;
+    
+    return 0;
+}
+
+Bigint* second_function(unsigned int n, Bigint* (*mult)(Bigint*, Bigint*)) {
+    if (n == 0) return NULL;
+
+    Bigint* result = uint_to_bigint(1u);
+    Bigint* base = uint_to_bigint(115249u);
+    unsigned int power = 4183;
+
+    while (power != 0) {
+        if (power & 1) {
+            Bigint* temp = mult(result, base);
+            if (!temp) { destroy(result); destroy(base); return NULL; }
+            destroy(result);
+            result = temp;
+            
+            if (mask_bigint(result, n)) { destroy(result); destroy(base); return NULL; }
+        }
+
+        if (power == 1) break;
+        
+        Bigint* temp = mult(base, base);
+        if (!temp) { destroy(result); destroy(base); return NULL; }
+        destroy(base);
+        base = temp;
+        
+        if (mask_bigint(base, n)) { destroy(result); destroy(base); return NULL; }
+        power >>= 1;
+    }
+    
+    destroy(base);
+    return result;
 }
 
 void test_init_assign(void) {
@@ -1231,27 +1331,53 @@ void test_karatsuba(void) {
 void test_functions(void) {
     printf("\nMATH FUNCTIONS TESTS\n");
 
+    printf("\nFUNCTION 1 TESTS\n");
     printf("\nTest 1\n"); {
-        Bigint* r = first_function(0);
+        Bigint* r = first_function(0, Karatsuba_external);
         printf("NULL\n");
         print_number(r);
     }
 
     printf("\nTest 2\n"); {
-        Bigint* r = first_function(6);
+        Bigint* r = first_function(6, Karatsuba_external);
         printf("0\n");
         print_number(r);
     }
 
     printf("\nTest 3\n"); {
-        Bigint* r = first_function(7);
+        Bigint* r = first_function(7, Karatsuba_external);
         printf("5040\n");
         print_number(r);
     }
 
     printf("\nTest 4\n"); {
-        Bigint* r = first_function(27);
+        Bigint* r = first_function(27, Karatsuba_external);
         printf("10888869450418352160768000000\n");
+        print_number(r);
+    }
+
+    printf("\nFUNCTION 2 TESTS\n");
+    printf("\nTest 5\n"); {
+        Bigint* r = second_function(0, Karatsuba_external);
+        printf("NULL\n");
+        print_number(r);
+    }
+
+    printf("\nTest 6\n"); {
+        Bigint* r = second_function(1, Karatsuba_external);
+        printf("1\n");
+        print_number(r);
+    }
+
+    printf("\nTest 7\n"); {
+        Bigint* r = second_function(16, Karatsuba_external);
+        printf("54097\n");
+        print_number(r);
+    }
+
+    printf("\nTest 8\n"); {
+        Bigint* r = second_function(160, Karatsuba_external);
+        printf("1395949026112318731162903731117745318796059792209\n");
         print_number(r);
     }
 
