@@ -6,14 +6,6 @@
 #include <limits.h>
 #include <stdint.h>
 
-#define SUCCESS 0
-#define BASE (unsigned int)(sizeof(unsigned int) * 8)
-#define BASE_BITS (8u * (unsigned)sizeof(unsigned int))
-#define BASE_ULL (1ULL << BASE_BITS)
-#define DIGIT_MASK ((unsigned long long)UINT_MAX)
-#define SIGN_MASK_U ((unsigned int)(1u << (BASE_BITS - 1u)))
-#define ABS_MASK_U ((unsigned int)(SIGN_MASK_U - 1u))
-
 static void printBits(unsigned int number) {
     /* Display bits of a given number */
     for (int i = sizeof(number)*CHAR_BIT - 1; i >= 0; i--) {
@@ -35,8 +27,8 @@ static void small_multiply(Bigint* number, int value) {
 
     // Auxiliary variables
     unsigned int WORD_BITS = sizeof(unsigned int) * CHAR_BIT;
-    unsigned int sign_mask = 1U << (WORD_BITS - 1);
-    unsigned int abs_mask = sign_mask - 1;
+    unsigned int sign_mask = 1U << (WORD_BITS - 1u);
+    unsigned int abs_mask = sign_mask - 1u;
     unsigned int sign = number->high_digit & sign_mask;
 
     // In case of empty array
@@ -79,7 +71,7 @@ static void small_multiply(Bigint* number, int value) {
         number->high_digit = new_carry | sign;
 
     } else if (new_lo >= sign_mask) {
-        unsigned int nc = number->digits[0] + 1;
+        unsigned int nc = number->digits[0] + 1u;
         unsigned int* temp_ptr = realloc(number->digits, (nc + 1) * sizeof(unsigned int));
         if (!temp_ptr) return;
         number->digits = temp_ptr;
@@ -96,8 +88,8 @@ static void small_add(Bigint* number, int value) {
 
     // Auxiliary variables
     unsigned int WORD_BITS=sizeof(unsigned int)*8;
-    unsigned int sign_mask=1U << (WORD_BITS - 1);
-    unsigned int abs_mask=sign_mask - 1;
+    unsigned int sign_mask=1U << (WORD_BITS - 1u);
+    unsigned int abs_mask=sign_mask - 1u;
     unsigned long long carry=value;
 
     // In case of empty array
@@ -163,7 +155,8 @@ void assign_value(Bigint* number, char* value) {
         start=1;
     }
 
-    for (int i = start; i < (int)strlen(value); i++) {
+    int length = (int)strlen(value);
+    for (int i = start; i < length; i++) {
         small_multiply(number, 10);
         small_add(number, value[i] - '0');
     }
@@ -186,11 +179,11 @@ void assign_value(Bigint* number, char* value) {
 }
 
 static void normalize(Bigint* number) {
-    unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1));
+    unsigned int sign_mask = (1u << (sizeof(unsigned int) * 8 - 1u));
     unsigned int max_number_i = ~sign_mask;
 
     // Base cases
-    if ((number->high_digit & (sign_mask - 1)) != 0) return;
+    if ((number->high_digit & (sign_mask - 1u)) != 0) return;
     if (!number->digits) return;
 
     // Process array elements
@@ -215,7 +208,7 @@ static void normalize(Bigint* number) {
         return;
     }
 
-    unsigned int* temp_ptr = realloc(number->digits, (number->digits[0] + 1) * sizeof(unsigned int));
+    unsigned int* temp_ptr = (unsigned int*)realloc(number->digits, (number->digits[0] + 1) * sizeof(unsigned int));
     if (!temp_ptr) return;
     number->digits = temp_ptr;
 }
@@ -345,7 +338,7 @@ void sum_interior(Bigint* number1, Bigint* number2) {
     if (!number1 || !number2) return;
 
     // Auxiliary variables
-    unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1));
+    unsigned int sign_mask = (1u << (sizeof(unsigned int) * 8 - 1u));
     unsigned int max_number_i = ~sign_mask;
     unsigned int len1 = number1->digits ? number1->digits[0] : 0;
     unsigned int len2 = number2->digits ? number2->digits[0] : 0;
@@ -628,7 +621,7 @@ Bigint* sub_external(Bigint* number1, Bigint* number2) {
 
 static unsigned int loword(unsigned int number){
         /* Calculate low word of the number */
-        return number & ((1 << (sizeof(unsigned int) << 2)) - 1);
+        return number & ((1u << (sizeof(unsigned int) << 2)) - 1u);
 }
 
 static unsigned int hiword(unsigned int number){
@@ -755,8 +748,9 @@ void mult_internal(Bigint* number1, Bigint* number2) {
     number1->high_digit = result->high_digit;
     if (result->digits) {
         unsigned int size = result->digits[0] + 1;
-        number1->digits = malloc(size * sizeof(unsigned int));
-        if (!number1->digits) return;
+        unsigned int* temp_ptr = (unsigned int*)calloc(size, sizeof(unsigned int));
+        if (!temp_ptr) return;
+        number1->digits = temp_ptr;
         memcpy(number1->digits, result->digits, size * sizeof(unsigned int));
     } else {
         number1->digits = NULL;
@@ -771,6 +765,12 @@ void shift_words(Bigint* number, unsigned int n) {
     if (!number || n == 0) return;
 
     unsigned int length = number->digits ? number->digits[0] : 0;
+
+    if (!number->digits) {
+        number->digits = (unsigned int*)calloc(n + 1, sizeof(unsigned int));
+        number->digits[0] = n;
+        return;
+    }
 
     unsigned int* temp = realloc(number->digits, (length + n + 1) * sizeof(unsigned int));
     if (!temp) return;
@@ -821,6 +821,7 @@ Bigint* Karatsuba_external(Bigint* number1, Bigint* number2) {
         if (number2->high_digit & ABS_MASK_U) length2 = 1; 
         else length2 = 0;
     }
+
     // Max length determination
     max_length = (length1 <= length2) ? length2 : length1;
 
@@ -977,7 +978,7 @@ int mask_bigint(Bigint* number, unsigned int n) {
     unsigned int remainder_digit = n % BASE;
     unsigned int high_value = number->high_digit & ABS_MASK_U; 
     unsigned int number_length
-    = ((number->digits == NULL) ? 1 : number->digits[0] + (high_value != 0));
+    = ((number->digits == NULL) ? 1u : number->digits[0] + (high_value != 0));
     unsigned int remainder_mask = (remainder_digit == 0) ? 0 : ((1u << remainder_digit) - 1);
 
     if (digits_shift >= number_length) return 0;
