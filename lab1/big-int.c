@@ -318,6 +318,26 @@ void number_debug(Bigint* number) {
     printf("\n");
 }
 
+static Bigint* clone_bigint(Bigint* src) {
+    /* Clone of bigint */
+    if (!src) return NULL;
+
+    Bigint* dst = init();
+    if (!dst) return NULL;
+    dst->high_digit = src->high_digit;
+
+    if (src->digits) {
+        unsigned int size = src->digits[0] + 1;
+        dst->digits = malloc(size * sizeof(unsigned int));
+        if (!dst->digits) { free(dst); return NULL; }
+        memcpy(dst->digits, src->digits, size * sizeof(unsigned int));
+    } else {
+        dst->digits = NULL;
+    }
+
+    return dst;
+}
+
 void sum_interior(Bigint* number1, Bigint* number2) {
     /* Internal (return nothing, result is placed in number1) sum of two Bigint numbers
     separately process two cases of numbers with different signs and with the same sign
@@ -570,9 +590,14 @@ void sub_interior(Bigint* number1, Bigint* number2) {
     Change the sign of the second number to its opposite and call the sum function */
     if (!number1 || !number2) return;
 
-    number2->high_digit = (number2->high_digit & SIGN_MASK_U)
-    ? number2->high_digit & ABS_MASK_U : number2->high_digit | SIGN_MASK_U;
-    sum_interior(number1, number2);
+    Bigint* temp = clone_bigint(number2);
+    if (!temp) return;
+
+    temp->high_digit ^= SIGN_MASK_U;
+
+    sum_interior(number1, temp);
+
+    destroy(temp);
 }
 
 Bigint* sub_external(Bigint* number1, Bigint* number2) {
@@ -760,26 +785,6 @@ void shift_words(Bigint* number, unsigned int n) {
     }
 
     number->digits[0] = length + n;
-}
-
-static Bigint* clone_bigint(Bigint* src) {
-    /* Clone of bigint */
-    if (!src) return NULL;
-
-    Bigint* dst = init();
-    if (!dst) return NULL;
-    dst->high_digit = src->high_digit;
-
-    if (src->digits) {
-        unsigned int size = src->digits[0] + 1;
-        dst->digits = malloc(size * sizeof(unsigned int));
-        if (!dst->digits) { free(dst); return NULL; }
-        memcpy(dst->digits, src->digits, size * sizeof(unsigned int));
-    } else {
-        dst->digits = NULL;
-    }
-
-    return dst;
 }
 
 Bigint* Karatsuba_external(Bigint* number1, Bigint* number2) {
