@@ -1,3 +1,5 @@
+#include "bigint.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,13 +14,7 @@
 #define SIGN_MASK_U ((unsigned int)(1u << (BASE_BITS - 1u)))
 #define ABS_MASK_U ((unsigned int)(SIGN_MASK_U - 1u))
 
-typedef struct Bigint {
-    int high_digit;
-    unsigned int*
-    digits;
-} Bigint;
-
-void printBits(unsigned int number) {
+static void printBits(unsigned int number) {
     /* Display bits of a given number */
     for (int i = sizeof(number)*CHAR_BIT - 1; i >= 0; i--) {
         printf("%u", (number >> i) & 1);
@@ -26,7 +22,7 @@ void printBits(unsigned int number) {
     }
 }
 
-void small_multiply(Bigint* number, int value) {
+static void small_multiply(Bigint* number, int value) {
     if (!number) return;
 
     // Base case of zero value
@@ -95,7 +91,7 @@ void small_multiply(Bigint* number, int value) {
     }
 }
 
-void small_add(Bigint* number, int value) {
+static void small_add(Bigint* number, int value) {
     if (!number) return;
 
     // Auxiliary variables
@@ -189,7 +185,7 @@ void assign_value(Bigint* number, char* value) {
     if (negative) number->high_digit |= SIGN_MASK_U;
 }
 
-void normalize(Bigint* number) {
+static void normalize(Bigint* number) {
     unsigned int sign_mask = (1 << (sizeof(unsigned int) * 8 - 1));
     unsigned int max_number_i = ~sign_mask;
 
@@ -224,7 +220,7 @@ void normalize(Bigint* number) {
     number->digits = temp_ptr;
 }
 
-unsigned int get_word_print(Bigint* number, unsigned int i) {
+static unsigned int get_word_print(Bigint* number, unsigned int i) {
     if (number->digits) {
         if (i < number->digits[0]) return number->digits[i + 1u];
         if (i == number->digits[0]) return (unsigned int)number->high_digit & ABS_MASK_U;
@@ -605,17 +601,17 @@ Bigint* sub_external(Bigint* number1, Bigint* number2) {
     return result;
 }
 
-unsigned int loword(unsigned int number){
+static unsigned int loword(unsigned int number){
         /* Calculate low word of the number */
         return number & ((1 << (sizeof(unsigned int) << 2)) - 1);
 }
 
-unsigned int hiword(unsigned int number){
+static unsigned int hiword(unsigned int number){
         /* Calculate high word of the number */
         return number >> (sizeof(unsigned int) << 2);
 }
 
-unsigned int get_word(Bigint* number, unsigned int index) {
+static unsigned int get_word(Bigint* number, unsigned int index) {
     /* Get the word at the specified index from the Bigint number */
     if (number->digits) {
         if (index < number->digits[0]) return number->digits[index + 1u];
@@ -745,50 +741,6 @@ void mult_internal(Bigint* number1, Bigint* number2) {
     free(result);
 }
 
-void diserealize(Bigint* number) {
-    /* Convert Bigint number to a form convenient for halving */
-    // If there is a value in high_digit transfer it to the array
-    if ((number->high_digit & ABS_MASK_U) != 0u) {
-        if (number->digits) {
-            unsigned int* temp_ptr 
-            = (unsigned int*)realloc(number->digits, (number->digits[0] + 2u) * sizeof(unsigned int));
-            if (!temp_ptr) return;
-            number->digits = temp_ptr;
-            number->digits[0]++;
-            number->digits[number->digits[0]] = (number->high_digit & ABS_MASK_U);
-            number->high_digit = 0u;
-        } else {
-            unsigned int* temp_ptr = (unsigned int*)calloc(2, sizeof(unsigned int));
-            if (!temp_ptr) return;
-            number->digits = temp_ptr;
-            number->digits[0] = 1u;
-            number->digits[1] = (number->high_digit & ABS_MASK_U);
-            number->high_digit = 0u;
-        }
-    // If there is no value in high_digit just erase the sign
-    } else {
-        if (number->digits) {
-            number->high_digit &= ABS_MASK_U;
-        } else {
-            unsigned int* temp_ptr = (unsigned int*)calloc(2, sizeof(unsigned int));
-            if (!temp_ptr) return;
-            number->digits = temp_ptr;
-            number->digits[0] = 1u;
-            number->high_digit = 0u;
-        }
-    }
-
-    // Round the quantity of digits to the even
-    if (number->digits[0] % 2 != 0) {
-        unsigned int* temp_ptr 
-        = (unsigned int*)realloc(number->digits, (number->digits[0] + 2u) * sizeof(unsigned int));
-        if (!temp_ptr) return;
-        number->digits = temp_ptr;
-        number->digits[0]++;
-        number->digits[number->digits[0]] = 0;
-    }
-}
-
 void shift_words(Bigint* number, unsigned int n) {
     /* Shift number for n digits placing 0 on arosed positions */
     if (!number || n == 0) return;
@@ -810,7 +762,7 @@ void shift_words(Bigint* number, unsigned int n) {
     number->digits[0] = length + n;
 }
 
-Bigint* clone_bigint(Bigint* src) {
+static Bigint* clone_bigint(Bigint* src) {
     /* Clone of bigint */
     if (!src) return NULL;
 
@@ -1013,23 +965,6 @@ Bigint* uint_to_bigint(unsigned int number) {
     return result;
 }
 
-Bigint* first_function(unsigned int n, Bigint* (*mult)(Bigint*, Bigint*)) {
-    /* Recieve natural number and calculate sum from 1 to n of (-1)^n * n! */
-    if (n == 0) return NULL;
-    Bigint* factorial = init();
-    if (n % 2 == 0) return factorial;
-    assign_value(factorial, "1");
-    for (unsigned int i = 2; i <= n; i++) {
-        Bigint* current_number = uint_to_bigint(i);
-        Bigint* temp_result = mult(factorial, current_number);
-        if (!temp_result) { destroy(factorial); destroy(temp_result); destroy(current_number); return NULL; }
-        factorial = temp_result;
-        destroy(current_number);
-    }
-
-    return factorial;
-}
-
 int mask_bigint(Bigint* number, unsigned int n) {
     if (!number) return 1;
 
@@ -1060,335 +995,4 @@ int mask_bigint(Bigint* number, unsigned int n) {
     number->digits = temp_ptr;
     
     return 0;
-}
-
-Bigint* second_function(unsigned int n, Bigint* (*mult)(Bigint*, Bigint*)) {
-    if (n == 0) return NULL;
-
-    Bigint* result = uint_to_bigint(1u);
-    Bigint* base = uint_to_bigint(115249u);
-    unsigned int power = 4183;
-
-    while (power != 0) {
-        if (power & 1) {
-            Bigint* temp = mult(result, base);
-            if (!temp) { destroy(result); destroy(base); return NULL; }
-            destroy(result);
-            result = temp;
-            
-            if (mask_bigint(result, n)) { destroy(result); destroy(base); return NULL; }
-        }
-
-        if (power == 1) break;
-        
-        Bigint* temp = mult(base, base);
-        if (!temp) { destroy(result); destroy(base); return NULL; }
-        destroy(base);
-        base = temp;
-        
-        if (mask_bigint(base, n)) { destroy(result); destroy(base); return NULL; }
-        power >>= 1;
-    }
-    
-    destroy(base);
-    return result;
-}
-
-void test_init_assign(void) {
-    printf("\nINIT & ASSIGN_VALUE TESTS\n");
-
-    printf("\nA) init()\n");
-    Bigint* t=init();
-    number_debug(t);
-    free(t);
-
-    printf("\nB) assign_value(\"0\")\n");
-    t=init();
-    assign_value(t,"0");
-    printf("print_number: ");
-    print_number(t);
-    number_debug(t);
-    free(t->digits);
-    free(t);
-
-    printf("\nC) assign_value(\"5\")\n");
-    t=init();
-    assign_value(t,"5");
-    printf("print_number: ");
-    print_number(t);
-    number_debug(t);
-    free(t->digits);
-    free(t);
-
-    printf("\nD) assign_value(\"-5\")\n");
-    t=init();
-    assign_value(t,"-5");
-    printf("print_number: ");
-    print_number(t);
-    number_debug(t);
-    free(t->digits);
-    free(t);
-
-    printf("\nE) assign_value(\"4294967296\")\n");
-    t=init();
-    assign_value(t,"4294967296");
-    printf("print_number: ");
-    print_number(t);
-    number_debug(t);
-    free(t->digits);
-    free(t);
-
-    printf("\nF) assign_value long positive and negative\n");
-    Bigint* a=init(); assign_value(a,"12345678901234567890");
-    Bigint* b=init(); assign_value(b,"-9876543210987654321");
-    printf("A: "); print_number(a); number_debug(a);
-    printf("B: "); print_number(b); number_debug(b);
-    free(a->digits); free(a); free(b->digits);
-    free(b);
-    printf("\nINIT & ASSIGN_VALUE TESTS DONE\n");
-}
-
-void test_arithmetics(void) {
-    printf("\nSUMMATION, SUBSTRUCTION & MULTIPLICATION TESTS\n");
-
-    printf("Test 1\n"); {
-        Bigint* a=init(); assign_value(a,"0");
-        Bigint* b=init(); assign_value(b,"0");
-        sum_interior(a,b);
-        printf("0\n");
-        print_number(a);
-    }
-
-    printf("\nTest 2\n"); {
-        Bigint* a=init(); assign_value(a,"0");
-        Bigint* b=init(); assign_value(b,"0");
-        Bigint* r=sum_external(a,b);
-        printf("0\n");
-        print_number(r);
-    }
-
-    printf("\nTest 3\n"); {
-        Bigint* a=init(); assign_value(a,"5");
-        Bigint* b=init(); assign_value(b,"7");
-        sum_interior(a,b);
-        printf("12\n");
-        print_number(a);
-    }
-
-    printf("\nTest 4\n"); {
-        Bigint* a=init(); assign_value(a,"2147483647");
-        Bigint* b=init(); assign_value(b,"1");
-        Bigint* r=sum_external(a,b);
-        printf("2147483648\n");
-        print_number(r);
-    }
-
-    printf("\nTest 5\n"); {
-        Bigint* a=init(); assign_value(a,"-5");
-        Bigint* b=init(); assign_value(b,"3");
-        Bigint* r=sum_external(a,b);
-        printf("-2\n");
-        print_number(r);
-    }
-
-    printf("\nTest 6\n"); {
-        Bigint* a=init(); assign_value(a,"-10");
-        Bigint* b=init(); assign_value(b,"-20");
-        sum_interior(a,b);
-        printf("-30\n");
-        print_number(a);
-    }
-
-    printf("\nTest 7\n"); {
-        Bigint* a=init(); assign_value(a,"7");
-        Bigint* b=init(); assign_value(b,"5");
-        sub_interior(a,b);
-        printf("2\n");
-        print_number(a);
-    }
-
-    printf("\nTest 8\n"); {
-        Bigint* a=init(); assign_value(a,"10000000000");
-        Bigint* b=init(); assign_value(b,"-1");
-        Bigint* r=sum_external(a,b);
-        printf("9999999999\n");
-        print_number(r);
-    }
-
-    printf("\nTest 9\n"); {
-        Bigint* a=init(); assign_value(a,"6");
-        Bigint* b=init(); assign_value(b,"7");
-        mult_internal(a,b);
-        printf("42\n");
-        print_number(a);
-    }
-
-    printf("\nTest 10\n"); {
-        Bigint* a=init(); assign_value(a,"123456");
-        Bigint* b=init(); assign_value(b,"0");
-        Bigint* r=mult_external(a,b);
-        printf("0\n");
-        print_number(r);
-    }
-
-    printf("\nTest 11\n"); {
-        Bigint* a=init(); assign_value(a,"744309584305832935");
-        Bigint* b=init(); assign_value(b,"9512075892352375938395204");
-        mult_internal(a,b);
-        printf("7079929253322331804219415104297920429243740\n");
-        print_number(a);
-    }
-
-    printf("\nTest 12\n"); {
-        Bigint* a=init(); assign_value(a,"74430958432567889879235305832935");
-        Bigint* b=init(); assign_value(b,"9512075892352789235789235789235375938395204");
-        sum_interior(a,b);
-        printf("9512075892427220194221803679114611244228139\n");
-        print_number(a);
-    }
-
-    printf("\nSUMMATION, SUBSTRUCTION & MULTIPLICATION TESTS DONE\n");
-}
-
-void test_karatsuba(void) {
-    printf("\nKARATSUBA TESTS\n");
-
-    printf("\nTest 1\n"); {
-        Bigint* a = init(); assign_value(a, "0");
-        Bigint* b = init(); assign_value(b, "0");
-        Bigint* r = Karatsuba_external(a, b);
-        printf("0\n");
-        print_number(r);
-    }
-
-    printf("\nTest 2\n"); {
-        Bigint* a = init(); assign_value(a, "0");
-        Bigint* b = init(); assign_value(b, "9512075892352375938395204");
-        Bigint* r = Karatsuba_external(a, b);
-        printf("0\n");
-        print_number(r);
-    }
-
-    printf("\nTest 3\n"); {
-        Bigint* a = init(); assign_value(a, "7443");
-        Bigint* b = init(); assign_value(b, "95120");
-        Bigint* r = Karatsuba_external(a, b);
-        printf("707978160\n");
-        print_number(r);
-    }
-
-    printf("\nTest 4\n"); {
-        Bigint* a = init(); assign_value(a, "744353434");
-        Bigint* b = init(); assign_value(b, "95120");
-        Bigint* r = Karatsuba_external(a, b);
-        printf("70802898642080\n");
-        print_number(r);
-    }
-
-    printf("\nTest 5\n"); {
-        Bigint* a = init(); assign_value(a, "744309584305832935");
-        Bigint* b = init(); assign_value(b, "9512075892352375938395204");
-        Bigint* r = Karatsuba_external(a, b);
-        printf("7079929253322331804219415104297920429243740\n");
-        print_number(r);
-    }
-
-    printf("\nTest 6\n"); {
-        Bigint* a = init(); assign_value(a, "-744309584305832935");
-        Bigint* b = init(); assign_value(b, "9512075892352375938395204");
-        Bigint* r = Karatsuba_external(a, b);
-        printf("-7079929253322331804219415104297920429243740\n");
-        print_number(r);
-    }
-
-    printf("\nTest 7\n"); {
-        Bigint* a = init(); assign_value(a, "-744309584305832935");
-        Bigint* b = init(); assign_value(b, "-9512075892352375938395204");
-        Bigint* r = Karatsuba_external(a, b);
-        printf("7079929253322331804219415104297920429243740\n");
-        print_number(r);
-    }
-
-    printf("\nTest 8\n"); {
-        Bigint* a = init(); assign_value(a, "546732983845545");
-        Bigint* b = init(); assign_value(b, "0");
-        Karatsuba_interior(a, b);
-        printf("0\n");
-        print_number(a);
-    }
-
-    printf("\nTest 9\n"); {
-        Bigint* a = init(); assign_value(a, "546732983845545");
-        Bigint* b = init(); assign_value(b, "-744309584305832935");
-        Karatsuba_interior(a, b);
-        printf("-406938599932365272314070614024575\n");
-        print_number(a);
-    }
-
-    printf("\nKARATSUBA TESTS DONE\n");
-}
-
-void test_functions(void) {
-    printf("\nMATH FUNCTIONS TESTS\n");
-
-    printf("\nFUNCTION 1 TESTS\n");
-    printf("\nTest 1\n"); {
-        Bigint* r = first_function(0, Karatsuba_external);
-        printf("NULL\n");
-        print_number(r);
-    }
-
-    printf("\nTest 2\n"); {
-        Bigint* r = first_function(6, Karatsuba_external);
-        printf("0\n");
-        print_number(r);
-    }
-
-    printf("\nTest 3\n"); {
-        Bigint* r = first_function(7, Karatsuba_external);
-        printf("5040\n");
-        print_number(r);
-    }
-
-    printf("\nTest 4\n"); {
-        Bigint* r = first_function(27, Karatsuba_external);
-        printf("10888869450418352160768000000\n");
-        print_number(r);
-    }
-
-    printf("\nFUNCTION 2 TESTS\n");
-    printf("\nTest 5\n"); {
-        Bigint* r = second_function(0, Karatsuba_external);
-        printf("NULL\n");
-        print_number(r);
-    }
-
-    printf("\nTest 6\n"); {
-        Bigint* r = second_function(1, Karatsuba_external);
-        printf("1\n");
-        print_number(r);
-    }
-
-    printf("\nTest 7\n"); {
-        Bigint* r = second_function(16, Karatsuba_external);
-        printf("54097\n");
-        print_number(r);
-    }
-
-    printf("\nTest 8\n"); {
-        Bigint* r = second_function(160, Karatsuba_external);
-        printf("1395949026112318731162903731117745318796059792209\n");
-        print_number(r);
-    }
-
-    printf("\nMATH FUNCTIONS TESTS DONE\n");
-}
-
-int main(void) {
-    // test_init_assign();
-    // test_arithmetics();
-    // test_karatsuba();
-    test_functions();
-
-    return SUCCESS;
 }
